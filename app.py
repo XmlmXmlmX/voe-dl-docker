@@ -25,29 +25,41 @@ def run_download(job_id, url):
         jobs[job_id]['status'] = 'running'
         jobs[job_id]['started_at'] = time.time()
 
+    proc = None
     try:
         env = {**os.environ, 'VOE_DL_FORCE_DOWNLOAD': '1'}
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             [sys.executable, SCRIPT_PATH, '-u', url],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             cwd=DOWNLOAD_DIR,
             env=env,
-            timeout=DOWNLOAD_TIMEOUT,
         )
+
+        log_lines = []
+        deadline = time.time() + DOWNLOAD_TIMEOUT
+        for line in proc.stdout:
+            if time.time() > deadline:
+                proc.kill()
+                raise subprocess.TimeoutExpired(proc.args, DOWNLOAD_TIMEOUT)
+            log_lines.append(line.rstrip('\n'))
+            with jobs_lock:
+                jobs[job_id]['logs'] = '\n'.join(log_lines)
+
+        proc.wait()
         with jobs_lock:
-            jobs[job_id]['logs'] = proc.stdout.strip()
             jobs[job_id]['returncode'] = proc.returncode
             jobs[job_id]['status'] = 'done' if proc.returncode == 0 else 'error'
     except subprocess.TimeoutExpired:
         with jobs_lock:
             jobs[job_id]['status'] = 'error'
-            jobs[job_id]['logs'] = f'Download timed out after {DOWNLOAD_TIMEOUT} seconds.'
+            jobs[job_id]['logs'] = (jobs[job_id].get('logs') or '') + \
+                f'\nDownload timed out after {DOWNLOAD_TIMEOUT} seconds.'
     except Exception as exc:
         with jobs_lock:
             jobs[job_id]['status'] = 'error'
-            jobs[job_id]['logs'] = str(exc)
+            jobs[job_id]['logs'] = (jobs[job_id].get('logs') or '') + '\n' + str(exc)
 
     with jobs_lock:
         jobs[job_id]['finished_at'] = time.time()
