@@ -20,6 +20,60 @@ A Python-based downloader for videos hosted on [voe.sx](https://voe.sx).
 
 ---
 
+## 🐳 Docker Deployment
+
+### Quick Start
+
+```bash
+docker compose up -d
+```
+
+Downloads are saved to `./downloads` on the host by default.  
+Access the web UI at `http://localhost:5000`.
+
+### Custom Output Path
+
+Set the `DOWNLOAD_PATH` environment variable to save downloads to any host directory:
+
+```bash
+DOWNLOAD_PATH=/mnt/media/movies docker compose up -d
+```
+
+Or create a `.env` file next to `docker-compose.yml`:
+
+```env
+DOWNLOAD_PATH=/mnt/media/movies
+```
+
+Then run:
+
+```bash
+docker compose up -d
+```
+
+### TrueNAS Scale
+
+In TrueNAS Scale's Docker (or Apps) configuration, map your dataset as the host path and `/downloads` as the container path.
+
+Alternatively, add a `.env` file with `DOWNLOAD_PATH` pointing to your TrueNAS dataset mount:
+
+```env
+DOWNLOAD_PATH=/mnt/pool/dataset/movies
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DOWNLOAD_PATH` | `./downloads` | **Host** path where downloaded videos are stored |
+| `DOWNLOAD_DIR` | `/downloads` | **Container** path for downloads (must match the volume's container path) |
+| `DOWNLOAD_TIMEOUT` | `3600` | Max download time in seconds before a job is cancelled |
+| `HOST` | `0.0.0.0` | Flask server listen address |
+| `PORT` | `5000` | Flask server listen port |
+| `FLASK_DEBUG` | `0` | Set to `1` to enable Flask debug mode |
+
+---
+
 ## 📥 How to Use `voe-dl`
 
 ### Method 1: Using `voe-dl.exe`
