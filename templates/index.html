@@ -86,9 +86,11 @@
           </span>
         </div>
         {% if job.logs %}
-        <details class="mt-1">
-          <summary class="text-muted small" style="cursor:pointer;">Log anzeigen</summary>
-          <div class="log-box mt-2">{{ job.logs }}</div>
+        <details class="mt-1" {% if job.status == 'running' %}open{% endif %}>
+          <summary class="text-muted small" style="cursor:pointer;">
+            {% if job.status == 'running' %}Live-Log{% else %}Log anzeigen{% endif %}
+          </summary>
+          <div class="log-box mt-2" {% if job.status == 'running' %}id="live-log-{{ job.id }}"{% endif %}>{{ job.logs }}</div>
         </details>
         {% endif %}
       </div>
@@ -116,10 +118,13 @@
   }
 
   function renderJob(job) {
+    const isRunning = job.status === 'running';
+    const logLabel = isRunning ? 'Live-Log' : 'Log anzeigen';
+    const logId = isRunning ? `id="live-log-${job.id}"` : '';
     const logSection = job.logs
-      ? `<details class="mt-1">
-           <summary class="text-muted small" style="cursor:pointer;">Log anzeigen</summary>
-           <div class="log-box mt-2">${escHtml(job.logs)}</div>
+      ? `<details class="mt-1"${isRunning ? ' open' : ''}>
+           <summary class="text-muted small" style="cursor:pointer;">${logLabel}</summary>
+           <div class="log-box mt-2" ${logId}>${escHtml(job.logs)}</div>
          </details>`
       : '';
     return `
@@ -158,6 +163,13 @@
         list.innerHTML = jobs.map(renderJob).join('');
         document.getElementById('last-updated').textContent =
           'Zuletzt aktualisiert: ' + new Date().toLocaleTimeString();
+        // Auto-scroll live log boxes to the bottom so the latest output is visible
+        jobs.forEach(job => {
+          if (job.status === 'running') {
+            const liveLog = document.getElementById(`live-log-${job.id}`);
+            if (liveLog) liveLog.scrollTop = liveLog.scrollHeight;
+          }
+        });
       })
       .catch(() => {});
   }
