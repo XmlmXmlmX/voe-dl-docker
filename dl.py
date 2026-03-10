@@ -14,7 +14,8 @@ from urllib.parse import urlparse
 from io import StringIO
 
 # Global flag to detect piping
-PIPED = not sys.stdout.isatty()
+# VOE_DL_FORCE_DOWNLOAD=1 disables pipe-mode so the web app can capture output
+PIPED = not sys.stdout.isatty() and not os.environ.get('VOE_DL_FORCE_DOWNLOAD')
 
 # If stdout is being piped, redirect all print() to a StringIO buffer
 if PIPED:
