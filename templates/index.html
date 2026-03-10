@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>voe-dl</title>
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+    crossorigin="anonymous"
+  />
+  <style>
+    body { background: #f8f9fa; }
+    .status-badge { font-size: .75rem; }
+    .log-box {
+      background: #212529;
+      color: #adb5bd;
+      font-family: monospace;
+      font-size: .8rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 300px;
+      overflow-y: auto;
+      padding: .75rem;
+      border-radius: .375rem;
+    }
+    .spinner-border-sm { vertical-align: middle; }
+  </style>
+</head>
+<body>
+<div class="container py-4" style="max-width: 860px;">
+
+  <div class="d-flex align-items-center mb-1">
+    <h1 class="h3 mb-0 me-2">🎬 voe-dl</h1>
+    <span class="text-muted small">Web Interface</span>
+  </div>
+  <p class="text-muted mb-4">Videos von <a href="https://voe.sx" target="_blank" rel="noopener">voe.sx</a> herunterladen</p>
+
+  <!-- Input form -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <form method="POST" action="/download">
+        <div class="mb-3">
+          <label for="urls" class="form-label fw-semibold">URL(s) eingeben <span class="text-muted fw-normal">(eine URL pro Zeile)</span></label>
+          <textarea
+            class="form-control font-monospace"
+            id="urls"
+            name="urls"
+            rows="4"
+            placeholder="https://voe.sx/xxxxxxx&#10;https://voe.sx/yyyyyyy"
+            required
+          ></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary px-4">
+          ⬇ Download starten
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Job list (rendered server-side on initial load, updated via JS) -->
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h2 class="h5 mb-0">Downloads</h2>
+    <span class="text-muted small" id="last-updated"></span>
+  </div>
+
+  <div id="job-list">
+    {% if not jobs %}
+    <p class="text-muted" id="empty-msg">Noch keine Downloads gestartet.</p>
+    {% endif %}
+    {% for job in jobs %}
+    <div class="card shadow-sm mb-3" id="job-{{ job.id }}">
+      <div class="card-body pb-2">
+        <div class="d-flex justify-content-between align-items-start mb-1">
+          <span class="text-truncate me-2" style="max-width:70%;">
+            <a href="{{ job.url }}" target="_blank" rel="noopener" class="text-decoration-none text-body">{{ job.url }}</a>
+          </span>
+          <span class="badge rounded-pill
+            {% if job.status == 'done' %}bg-success
+            {% elif job.status == 'error' %}bg-danger
+            {% elif job.status == 'running' %}bg-primary
+            {% else %}bg-secondary{% endif %} status-badge">
+            {% if job.status == 'running' %}<span class="spinner-border spinner-border-sm me-1" role="status"></span>{% endif %}
+            {{ job.status }}
+          </span>
+        </div>
+        {% if job.logs %}
+        <details class="mt-1">
+          <summary class="text-muted small" style="cursor:pointer;">Log anzeigen</summary>
+          <div class="log-box mt-2">{{ job.logs }}</div>
+        </details>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+
+<script>
+  // Poll every 3 seconds
+  const POLL_INTERVAL_MS = 3000;
+
+  function statusBadge(status) {
+    const classes = {
+      done: 'bg-success',
+      error: 'bg-danger',
+      running: 'bg-primary',
+      pending: 'bg-secondary'
+    };
+    const spinner = status === 'running'
+      ? '<span class="spinner-border spinner-border-sm me-1" role="status"></span>'
+      : '';
+    return `<span class="badge rounded-pill ${classes[status] || 'bg-secondary'} status-badge">${spinner}${status}</span>`;
+  }
+
+  function renderJob(job) {
+    const logSection = job.logs
+      ? `<details class="mt-1">
+           <summary class="text-muted small" style="cursor:pointer;">Log anzeigen</summary>
+           <div class="log-box mt-2">${escHtml(job.logs)}</div>
+         </details>`
+      : '';
+    return `
+      <div class="card shadow-sm mb-3" id="job-${job.id}">
+        <div class="card-body pb-2">
+          <div class="d-flex justify-content-between align-items-start mb-1">
+            <span class="text-truncate me-2" style="max-width:70%;">
+              <a href="${escHtml(job.url)}" target="_blank" rel="noopener" class="text-decoration-none text-body">${escHtml(job.url)}</a>
+            </span>
+            ${statusBadge(job.status)}
+          </div>
+          ${logSection}
+        </div>
+      </div>`;
+  }
+
+  function escHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function refreshJobs() {
+    fetch('/jobs')
+      .then(r => r.json())
+      .then(jobs => {
+        const list = document.getElementById('job-list');
+        const empty = document.getElementById('empty-msg');
+        if (jobs.length === 0) {
+          if (!empty) list.innerHTML = '<p class="text-muted" id="empty-msg">Noch keine Downloads gestartet.</p>';
+          return;
+        }
+        list.innerHTML = jobs.map(renderJob).join('');
+        document.getElementById('last-updated').textContent =
+          'Zuletzt aktualisiert: ' + new Date().toLocaleTimeString();
+      })
+      .catch(() => {});
+  }
+
+  // Poll every POLL_INTERVAL_MS
+  setInterval(refreshJobs, POLL_INTERVAL_MS);
+</script>
+</body>
+</html>
