@@ -15,6 +15,11 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 SCRIPT_PATH = os.path.join(_APP_DIR, 'dl.py')
 DOWNLOAD_TIMEOUT = int(os.environ.get('DOWNLOAD_TIMEOUT', 3600))  # seconds
 
+# NOTE: VOE_DL_VERSION must match VERSION in dl.py. We cannot import dl.py
+# directly here because it redirects sys.stdout on import when not in a TTY.
+VOE_DL_VERSION = 'v1.7.3'
+APP_VERSION = os.environ.get('APP_VERSION', 'v1.0.1')
+
 # In-memory job store (sufficient for a single-container deployment)
 jobs = {}
 jobs_lock = threading.Lock()
@@ -69,7 +74,9 @@ def run_download(job_id, url):
 def index():
     with jobs_lock:
         job_list = sorted(jobs.values(), key=lambda j: j['created_at'], reverse=True)
-    return render_template('index.html', jobs=job_list)
+    return render_template('index.html', jobs=job_list,
+                           voe_dl_version=VOE_DL_VERSION,
+                           app_version=APP_VERSION)
 
 
 @app.route('/download', methods=['POST'])
