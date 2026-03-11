@@ -160,7 +160,21 @@
           if (!empty) list.innerHTML = '<p class="text-muted" id="empty-msg">Noch keine Downloads gestartet.</p>';
           return;
         }
+        // Preserve which job logs the user has manually expanded
+        const openLogs = new Set();
+        list.querySelectorAll('[id^="job-"]').forEach(card => {
+          const details = card.querySelector('details');
+          if (details && details.open) openLogs.add(card.id.replace('job-', ''));
+        });
         list.innerHTML = jobs.map(renderJob).join('');
+        // Restore expanded state so user-opened logs don't collapse on each poll
+        openLogs.forEach(jobId => {
+          const card = document.getElementById(`job-${jobId}`);
+          if (card) {
+            const details = card.querySelector('details');
+            if (details) details.open = true;
+          }
+        });
         document.getElementById('last-updated').textContent =
           'Zuletzt aktualisiert: ' + new Date().toLocaleTimeString();
         // Auto-scroll live log boxes to the bottom so the latest output is visible
