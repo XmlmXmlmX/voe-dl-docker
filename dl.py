@@ -754,7 +754,7 @@ def download_file(url, filename, referer_url=None):
                             sys.stdout.write(
                                 f"\r[{'=' * done}{' ' * (50 - done)}] {downloaded / 1024 / 1024:.2f}/{total_size / 1024 / 1024:.2f} MB")
                             sys.stdout.flush()
-            print("\n[+] Download complete!")
+            print(f"\n[+] Download complete: {os.path.abspath(filename)}")
     except Exception as e:
         print(f"[!] Error downloading file: {e}")
         # Fall back to wget if our method fails
@@ -794,8 +794,11 @@ def build_outtmpl(name, folder_name):
     if CREATE_SUBFOLDER and folder_name:
         os.makedirs(folder_name, exist_ok=True)
         print(f"[*] Saving to subfolder: {folder_name}")
-        return os.path.join(folder_name, name)
-    return name
+        outtmpl = os.path.join(folder_name, name)
+    else:
+        outtmpl = name
+    print(f"[*] Output path: {os.path.abspath(outtmpl)}")
+    return outtmpl
 
 def is_bait_source(source: str) -> bool:
     """Return True if *source* looks like a known test/bait video."""
