@@ -68,6 +68,7 @@ DOWNLOAD_PATH=/mnt/pool/dataset/movies
 | `DOWNLOAD_PATH` | `./downloads` | **Host** path where downloaded videos are stored |
 | `DOWNLOAD_DIR` | `/downloads` | **Container** path for downloads (must match the volume's container path) |
 | `DOWNLOAD_TIMEOUT` | `3600` | Max download time in seconds before a job is cancelled |
+| `CREATE_SUBFOLDER` | `0` | Set to `1` to save each download in its own sub-directory named after the video title |
 | `HOST` | `0.0.0.0` | Flask server listen address |
 | `PORT` | `5000` | Flask server listen port |
 | `FLASK_DEBUG` | `0` | Set to `1` to enable Flask debug mode |
