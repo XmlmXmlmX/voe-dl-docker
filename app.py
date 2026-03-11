@@ -5,6 +5,7 @@ import time
 import threading
 import subprocess
 from flask import Flask, render_template, request, jsonify, redirect, url_for
+from version import VOE_DL_VERSION
 
 app = Flask(__name__)
 
@@ -15,9 +16,6 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 SCRIPT_PATH = os.path.join(_APP_DIR, 'dl.py')
 DOWNLOAD_TIMEOUT = int(os.environ.get('DOWNLOAD_TIMEOUT', 3600))  # seconds
 
-# NOTE: VOE_DL_VERSION must match VERSION in dl.py. We cannot import dl.py
-# directly here because it redirects sys.stdout on import when not in a TTY.
-VOE_DL_VERSION = 'v1.7.3'
 APP_VERSION = os.environ.get('APP_VERSION', 'v1.0.1')
 
 # In-memory job store (sufficient for a single-container deployment)
@@ -129,4 +127,5 @@ if __name__ == '__main__':
     host = os.environ.get('HOST', '0.0.0.0')
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', '0') == '1'
+    print(f'voe-dl {VOE_DL_VERSION}  |  voe-dl-docker {APP_VERSION}')
     app.run(host=host, port=port, debug=debug)
