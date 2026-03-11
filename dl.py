@@ -17,6 +17,9 @@ from io import StringIO
 # VOE_DL_FORCE_DOWNLOAD=1 disables pipe-mode so the web app can capture output
 PIPED = not sys.stdout.isatty() and not os.environ.get('VOE_DL_FORCE_DOWNLOAD')
 
+# When CREATE_SUBFOLDER=1, each download is placed in a sub-directory named after the video title
+CREATE_SUBFOLDER = os.environ.get('CREATE_SUBFOLDER', '0') == '1'
+
 # If stdout is being piped, redirect all print() to a StringIO buffer
 if PIPED:
     sys.stdout_buffer = StringIO()
@@ -275,6 +278,8 @@ def download(URL):
             name = soup.title.string
 
         if name:
+            # Build a human-readable folder name by replacing separator dots/hyphens with spaces
+            folder_name = make_folder_name(name)
             # Clean the filename to avoid issues
             name = re.sub(r'[\\/*?:"<>|]', "_", name)
             name = name.replace(" ", "_")
@@ -284,6 +289,7 @@ def download(URL):
             name = URL.split("/")[-1]  # Use the last part of the URL as the default file name
             if not name or name == "":
                 name = f"download_{int(time.time())}"
+            folder_name = make_folder_name(name)
             print("Using default file name: " + name)
 
         # Enhanced source detection - multiple patterns and approaches
@@ -659,7 +665,7 @@ def download(URL):
 
                 print(f"[*] Downloading MP4 stream: {link}")
                 ydl_opts = {
-                    'outtmpl': name,
+                    'outtmpl': build_outtmpl(name, folder_name),
                     'quiet': False,
                     'no_warnings': False,
                     'http_headers': headers
@@ -696,7 +702,7 @@ def download(URL):
 
                 print(f"[*] Downloading HLS stream: {link}")
                 ydl_opts = {
-                    'outtmpl': name,
+                    'outtmpl': build_outtmpl(name, folder_name),
                     'quiet': False,
                     'no_warnings': False,
                     'http_headers': headers
@@ -757,8 +763,39 @@ def download_file(url, filename, referer_url=None):
 
 def delpartfiles():
     path = os.getcwd()
-    for file in glob.iglob(os.path.join(path, '*.part')):
+    for file in glob.iglob(os.path.join(path, '**', '*.part'), recursive=True):
         os.remove(file)
+
+
+def make_folder_name(raw_name):
+    """Convert a raw video title into a human-readable directory name.
+
+    Separator dots (e.g. ``This.is.the.name``) and hyphens between words
+    (e.g. ``Part-1``) are replaced with spaces so the resulting name is
+    suitable for use as a directory name without opaque separators.
+
+    Invalid filesystem characters are removed entirely (rather than replaced
+    with underscores as is done for filenames) to keep the directory name
+    clean and readable.
+    """
+    folder_name = re.sub(r'[\\/*?:"<>|]', '', raw_name)
+    folder_name = re.sub(r'\.(?=[a-zA-Z0-9])', ' ', folder_name)
+    folder_name = re.sub(r'(?<=[a-zA-Z0-9])-(?=[a-zA-Z0-9])', ' ', folder_name)
+    folder_name = re.sub(r'\s+', ' ', folder_name).strip()
+    return folder_name if folder_name else 'download'
+
+
+def build_outtmpl(name, folder_name):
+    """Return the yt-dlp output template path.
+
+    When *CREATE_SUBFOLDER* is enabled the file is placed inside a
+    sub-directory named *folder_name*, which is created if needed.
+    """
+    if CREATE_SUBFOLDER and folder_name:
+        os.makedirs(folder_name, exist_ok=True)
+        print(f"[*] Saving to subfolder: {folder_name}")
+        return os.path.join(folder_name, name)
+    return name
 
 def is_bait_source(source: str) -> bool:
     """Return True if *source* looks like a known test/bait video."""
