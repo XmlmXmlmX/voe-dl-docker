@@ -13,6 +13,8 @@ _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOAD_DIR = os.environ.get('DOWNLOAD_DIR', os.path.join(_APP_DIR, 'downloads'))
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+HISTORY_FILE = os.path.join(DOWNLOAD_DIR, 'downloaded_urls.txt')
+
 SCRIPT_PATH = os.path.join(_APP_DIR, 'dl.py')
 DOWNLOAD_TIMEOUT = int(os.environ.get('DOWNLOAD_TIMEOUT', 3600))  # seconds
 
@@ -21,6 +23,27 @@ APP_VERSION = os.environ.get('APP_VERSION', 'v1.0.1')
 # In-memory job store (sufficient for a single-container deployment)
 jobs = {}
 jobs_lock = threading.Lock()
+history_lock = threading.Lock()
+
+
+def load_history():
+    """Return list of previously successfully downloaded URLs (chronological order)."""
+    urls = []
+    if os.path.exists(HISTORY_FILE):
+        with history_lock:
+            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        urls.append(line)
+    return urls
+
+
+def log_url_to_history(url):
+    """Append a successfully downloaded URL to the history file."""
+    with history_lock:
+        with open(HISTORY_FILE, 'a', encoding='utf-8') as f:
+            f.write(url + '\n')
 
 
 def run_download(job_id, url):
@@ -54,6 +77,8 @@ def run_download(job_id, url):
         with jobs_lock:
             jobs[job_id]['returncode'] = proc.returncode
             jobs[job_id]['status'] = 'done' if proc.returncode == 0 else 'error'
+        if proc.returncode == 0:
+            log_url_to_history(url)
     except subprocess.TimeoutExpired:
         with jobs_lock:
             jobs[job_id]['status'] = 'error'
@@ -72,9 +97,11 @@ def run_download(job_id, url):
 def index():
     with jobs_lock:
         job_list = sorted(jobs.values(), key=lambda j: j['created_at'], reverse=True)
+    history = load_history()
     return render_template('index.html', jobs=job_list,
                            voe_dl_version=VOE_DL_VERSION,
-                           app_version=APP_VERSION)
+                           app_version=APP_VERSION,
+                           history=history)
 
 
 @app.route('/download', methods=['POST'])
@@ -105,6 +132,11 @@ def start_download():
         t.start()
 
     return redirect(url_for('index'), 303)
+
+
+@app.route('/history')
+def get_history():
+    return jsonify(load_history())
 
 
 @app.route('/jobs')
