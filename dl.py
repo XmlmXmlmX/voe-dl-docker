@@ -13,8 +13,8 @@ import time
 from urllib.parse import urlparse
 from io import StringIO
 
+from version import VOE_DL_VERSION as VERSION
 # Global flag to detect piping
-# VOE_DL_FORCE_DOWNLOAD=1 disables pipe-mode so the web app can capture output
 PIPED = not sys.stdout.isatty() and not os.environ.get('VOE_DL_FORCE_DOWNLOAD')
 
 # When CREATE_SUBFOLDER=1, each download is placed in a sub-directory named after the video title

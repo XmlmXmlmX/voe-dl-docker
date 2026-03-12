@@ -5,6 +5,7 @@ import time
 import threading
 import subprocess
 from flask import Flask, render_template, request, jsonify, redirect, url_for
+from version import VOE_DL_VERSION
 
 app = Flask(__name__)
 
@@ -14,6 +15,8 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 SCRIPT_PATH = os.path.join(_APP_DIR, 'dl.py')
 DOWNLOAD_TIMEOUT = int(os.environ.get('DOWNLOAD_TIMEOUT', 3600))  # seconds
+
+APP_VERSION = os.environ.get('APP_VERSION', 'v1.0.1')
 
 # In-memory job store (sufficient for a single-container deployment)
 jobs = {}
@@ -69,7 +72,9 @@ def run_download(job_id, url):
 def index():
     with jobs_lock:
         job_list = sorted(jobs.values(), key=lambda j: j['created_at'], reverse=True)
-    return render_template('index.html', jobs=job_list)
+    return render_template('index.html', jobs=job_list,
+                           voe_dl_version=VOE_DL_VERSION,
+                           app_version=APP_VERSION)
 
 
 @app.route('/download', methods=['POST'])
@@ -122,4 +127,5 @@ if __name__ == '__main__':
     host = os.environ.get('HOST', '0.0.0.0')
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', '0') == '1'
+    print(f'voe-dl {VOE_DL_VERSION}  |  voe-dl-docker {APP_VERSION}')
     app.run(host=host, port=port, debug=debug)
