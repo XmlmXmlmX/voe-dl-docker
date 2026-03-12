@@ -26,6 +26,10 @@
       border-radius: .375rem;
     }
     .spinner-border-sm { vertical-align: middle; }
+    .history-list {
+      max-height: 220px;
+      overflow-y: auto;
+    }
   </style>
 </head>
 <body>
@@ -40,7 +44,7 @@
   <!-- Input form -->
   <div class="card shadow-sm mb-4">
     <div class="card-body">
-      <form method="POST" action="/download">
+      <form method="POST" action="/download" id="download-form">
         <div class="mb-3">
           <label for="urls" class="form-label fw-semibold">URL(s) eingeben <span class="text-muted fw-normal">(eine URL pro Zeile)</span></label>
           <textarea
@@ -56,6 +60,29 @@
           ⬇ Download starten
         </button>
       </form>
+    </div>
+  </div>
+
+  <!-- Downloaded URLs history list -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+      <span class="fw-semibold">Heruntergeladene URLs</span>
+      <span class="badge bg-secondary" id="history-count">{{ history|length }}</span>
+    </div>
+    <div class="history-list" id="history-container">
+      {% if not history %}
+      <div class="card-body py-2">
+        <p class="text-muted mb-0 small" id="history-empty-msg">Noch keine URLs heruntergeladen.</p>
+      </div>
+      {% else %}
+      <ul class="list-group list-group-flush" id="history-ul">
+        {% for url in history|reverse %}
+        <li class="list-group-item text-truncate py-1 px-3">
+          <a href="{{ url }}" target="_blank" rel="noopener" class="text-decoration-none font-monospace small text-muted">{{ url }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
     </div>
   </div>
 
@@ -104,9 +131,37 @@
 
 </div>
 
+<!-- Re-download confirmation modal -->
+<div class="modal fade" id="redownloadModal" tabindex="-1" aria-labelledby="redownloadModalLabel" aria-hidden="true" style="display:none;">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="redownloadModalLabel">Bereits heruntergeladen</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+      </div>
+      <div class="modal-body">
+        <p>Die folgenden URLs wurden bereits heruntergeladen:</p>
+        <ul id="duplicate-urls-list" class="font-monospace small text-break"></ul>
+        <p class="mb-0">Möchten Sie diese erneut herunterladen?</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+        <button type="button" class="btn btn-primary" id="confirm-redownload">Erneut herunterladen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script
+  src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+  crossorigin="anonymous"
+></script>
 <script>
   // Poll every 3 seconds
   const POLL_INTERVAL_MS = 3000;
+
+  // Set of previously downloaded URLs, initialised from server-rendered data
+  let downloadedUrls = new Set({{ history | tojson }});
 
   function statusBadge(status) {
     const classes = {
@@ -192,8 +247,79 @@
       .catch(() => {});
   }
 
+  function refreshHistory() {
+    fetch('/history')
+      .then(r => r.json())
+      .then(urls => {
+        downloadedUrls = new Set(urls);
+        const count = document.getElementById('history-count');
+        if (count) count.textContent = urls.length;
+        const container = document.getElementById('history-container');
+        if (!container) return;
+        if (urls.length === 0) {
+          container.innerHTML = '<div class="card-body py-2"><p class="text-muted mb-0 small" id="history-empty-msg">Noch keine URLs heruntergeladen.</p></div>';
+          return;
+        }
+        // Render most recent first (reverse order)
+        const items = [...urls].reverse().map(url =>
+          `<li class="list-group-item text-truncate py-1 px-3">
+             <a href="${escHtml(url)}" target="_blank" rel="noopener" class="text-decoration-none font-monospace small text-muted">${escHtml(url)}</a>
+           </li>`
+        ).join('');
+        container.innerHTML = `<ul class="list-group list-group-flush" id="history-ul">${items}</ul>`;
+      })
+      .catch(() => {});
+  }
+
+  // Form submission: check for already-downloaded URLs before submitting
+  const downloadForm = document.getElementById('download-form');
+  const redownloadModalEl = document.getElementById('redownloadModal');
+  let redownloadModal = null;
+  if (typeof bootstrap !== 'undefined' && redownloadModalEl) {
+    redownloadModal = new bootstrap.Modal(redownloadModalEl);
+  }
+
+  if (downloadForm) {
+    downloadForm.addEventListener('submit', function (e) {
+      const textarea = document.getElementById('urls');
+      const enteredUrls = textarea.value
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith('#'));
+
+      const duplicates = enteredUrls.filter(url => downloadedUrls.has(url));
+      if (duplicates.length === 0) {
+        return; // No duplicates – proceed with normal form submission
+      }
+
+      e.preventDefault();
+
+      if (redownloadModal) {
+        // Populate modal list
+        const list = document.getElementById('duplicate-urls-list');
+        list.innerHTML = duplicates.map(url => `<li>${escHtml(url)}</li>`).join('');
+        redownloadModal.show();
+      } else {
+        // Fallback: native browser confirm dialog
+        const urlList = duplicates.join('\n');
+        if (window.confirm('Die folgenden URLs wurden bereits heruntergeladen:\n\n' + urlList + '\n\nMöchten Sie diese erneut herunterladen?')) {
+          downloadForm.submit();
+        }
+      }
+    });
+  }
+
+  const confirmBtn = document.getElementById('confirm-redownload');
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', function () {
+      if (redownloadModal) redownloadModal.hide();
+      if (downloadForm) downloadForm.submit();
+    });
+  }
+
   // Poll every POLL_INTERVAL_MS
   setInterval(refreshJobs, POLL_INTERVAL_MS);
+  setInterval(refreshHistory, POLL_INTERVAL_MS);
 </script>
 </body>
 </html>
