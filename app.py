@@ -29,8 +29,8 @@ history_lock = threading.Lock()
 def load_history():
     """Return list of previously successfully downloaded URLs (chronological order)."""
     urls = []
-    if os.path.exists(HISTORY_FILE):
-        with history_lock:
+    with history_lock:
+        if os.path.exists(HISTORY_FILE):
             with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
                 for line in f:
                     line = line.strip()
