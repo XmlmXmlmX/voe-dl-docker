@@ -68,7 +68,7 @@ def run_download(job_id, url):
 
     proc = None
     try:
-        env = {**os.environ, 'VOE_DL_FORCE_DOWNLOAD': '1'}
+        env = {**os.environ, 'VOE_DL_FORCE_DOWNLOAD': '1', 'DOWNLOAD_DIR': DOWNLOAD_DIR}
         proc = subprocess.Popen(
             [sys.executable, SCRIPT_PATH, '-u', url],
             stdout=subprocess.PIPE,
