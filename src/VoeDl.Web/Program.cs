@@ -1,10 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
+using VoeDl.ServiceDefaults;
 using VoeDl.Web.Components;
 using VoeDl.Web.Data;
 using VoeDl.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.AddServiceDefaults();
 
 // Bind configuration from environment variables (matches docker-compose)
 builder.Configuration.AddEnvironmentVariables();
@@ -80,5 +83,7 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+app.MapDefaultEndpoints();
 
 app.Run();
