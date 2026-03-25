@@ -24,6 +24,12 @@ __pycache__/
 # Downloaded videos directory
 downloads/
 
+# .NET build artifacts
+src/**/bin/
+src/**/obj/
+
 # Exceptions
-!requirements.txt
+!legacy/requirements.txt
 !links.txt
+
+appsettings.Development.json
