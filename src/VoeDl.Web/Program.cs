@@ -20,7 +20,20 @@ builder.Services.AddHttpClient("voe-download", client =>
     client.Timeout = Timeout.InfiniteTimeSpan;
 });
 
+// TMDB API client – Bearer token is read from configuration.
+// If TheMovieDbApiAccessToken is empty/absent, TMDB lookups are skipped.
+builder.Services.AddHttpClient("tmdb", (sp, client) =>
+{
+    var token = sp.GetRequiredService<IConfiguration>()["TheMovieDbApiAccessToken"] ?? "";
+    client.BaseAddress = new Uri("https://api.themoviedb.org/3/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+    if (!string.IsNullOrWhiteSpace(token))
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+});
+
 // Core application services
+builder.Services.AddSingleton<TmdbService>();
 builder.Services.AddSingleton<DownloadService>();
 builder.Services.AddSingleton<JobManagerService>();
 

@@ -56,13 +56,18 @@ public sealed class DownloadService
     // ---------------------------------------------------------------
     private readonly HttpClient _http;
     private readonly HttpClient _downloadHttp;
+    private readonly TmdbService _tmdb;
     private readonly ILogger<DownloadService> _logger;
     private readonly Random _rng = new();
 
-    public DownloadService(IHttpClientFactory httpClientFactory, ILogger<DownloadService> logger)
+    public DownloadService(
+        IHttpClientFactory httpClientFactory,
+        TmdbService tmdbService,
+        ILogger<DownloadService> logger)
     {
         _http = httpClientFactory.CreateClient("voe");
         _downloadHttp = httpClientFactory.CreateClient("voe-download");
+        _tmdb = tmdbService;
         _logger = logger;
     }
 
@@ -72,9 +77,9 @@ public sealed class DownloadService
 
     /// <summary>
     /// Downloads the video at <paramref name="url"/> into
-    /// <paramref name="downloadDir"/> using yt-dlp.
+    /// <paramref name="downloadDir"/>.
     /// Progress/log lines are written to <paramref name="logCallback"/>.
-    /// Returns the yt-dlp exit code.
+    /// Returns the exit/status code (0 = success).
     /// </summary>
     public async Task<int> DownloadAsync(
         string url,
@@ -108,18 +113,29 @@ public sealed class DownloadService
         var baseName = $"{SanitizeFilename(name)}_SS";
         logCallback($"[*] Downloading {mediaType} stream: {sourceUrl}");
 
+        int exitCode;
+        string? outputPath;
+
         // Direct MP4 URLs are downloaded via HttpClient to avoid requiring yt-dlp locally.
         // HLS/DASH manifests still need yt-dlp for muxing.
         if (mediaType == "mp4")
         {
-            var outputPath = Path.Combine(outputDir, $"{baseName}.mp4");
+            outputPath = Path.Combine(outputDir, $"{baseName}.mp4");
             logCallback($"[*] Output path: {outputPath}");
-            return await DownloadMp4DirectAsync(sourceUrl, outputPath, logCallback, cancellationToken);
+            exitCode = await DownloadMp4DirectAsync(sourceUrl, outputPath, logCallback, cancellationToken);
+        }
+        else
+        {
+            var outputTemplate = Path.Combine(outputDir, $"{baseName}.%(ext)s");
+            logCallback($"[*] Output path: {outputTemplate}");
+            exitCode = await RunYtDlpAsync(sourceUrl, outputTemplate, logCallback, cancellationToken);
+            outputPath = exitCode == 0 ? FindCreatedFile(outputDir, baseName) : null;
         }
 
-        var outputTemplate = Path.Combine(outputDir, $"{baseName}.%(ext)s");
-        logCallback($"[*] Output path: {outputTemplate}");
-        return await RunYtDlpAsync(sourceUrl, outputTemplate, logCallback, cancellationToken);
+        if (exitCode == 0 && outputPath is not null)
+            await LookupAndWriteNfoAsync(name, outputPath, logCallback, cancellationToken);
+
+        return exitCode;
     }
 
     // ---------------------------------------------------------------
@@ -454,6 +470,53 @@ public sealed class DownloadService
             }
         }
         return (null, "");
+    }
+
+    // ---------------------------------------------------------------
+    // TMDB metadata + NFO
+    // ---------------------------------------------------------------
+
+    private async Task LookupAndWriteNfoAsync(
+        string rawTitle,
+        string outputPath,
+        Action<string> log,
+        CancellationToken ct)
+    {
+        try
+        {
+            var meta = await _tmdb.LookupAsync(rawTitle, ct);
+            if (meta is null)
+            {
+                log("[*] TMDB: no match found or token not configured — skipping NFO.");
+                return;
+            }
+            log($"[+] TMDB: matched \"{meta.Title}\" ({meta.Kind}, id={meta.TmdbId})");
+            await _tmdb.WriteNfoAsync(outputPath, meta);
+            log($"[+] TMDB: NFO written → {Path.ChangeExtension(outputPath, ".nfo")}");
+        }
+        catch (Exception ex)
+        {
+            log($"[!] TMDB metadata lookup failed: {ex.Message}");
+            _logger.LogWarning(ex, "TMDB metadata lookup failed for {OutputPath}", outputPath);
+        }
+    }
+
+    /// <summary>
+    /// After yt-dlp writes the file it replaces <c>%(ext)s</c> with the
+    /// real extension.  Scan the directory for the created file.
+    /// </summary>
+    private static string? FindCreatedFile(string dir, string baseName)
+    {
+        try
+        {
+            return Directory
+                .EnumerateFiles(dir, $"{baseName}.*")
+                .FirstOrDefault(f =>
+                    !f.EndsWith(".part", StringComparison.OrdinalIgnoreCase) &&
+                    !f.EndsWith(".nfo",  StringComparison.OrdinalIgnoreCase) &&
+                    !f.EndsWith(".tmp",  StringComparison.OrdinalIgnoreCase));
+        }
+        catch { return null; }
     }
 
     // ---------------------------------------------------------------
