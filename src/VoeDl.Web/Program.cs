@@ -13,6 +13,13 @@ builder.Services.AddHttpClient("voe", client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
+// Dedicated client for streaming large media files; timeout is effectively
+// infinite so that we rely solely on the CancellationToken for cancellation.
+builder.Services.AddHttpClient("voe-download", client =>
+{
+    client.Timeout = Timeout.InfiniteTimeSpan;
+});
+
 // Core application services
 builder.Services.AddSingleton<DownloadService>();
 builder.Services.AddSingleton<JobManagerService>();

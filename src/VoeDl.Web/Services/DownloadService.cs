@@ -19,6 +19,8 @@ public sealed class DownloadService
     private const int HttpTimeoutSeconds = 30;
     private const int MinDelayMs = 1_000;
     private const int MaxDelayMs = 3_000;
+    private const int DownloadBufferSize = 81_920;        // 80 KB streaming buffer
+    private const long DownloadLogIntervalBytes = 10 * 1_048_576; // log every 10 MB
 
     private static readonly string[] UserAgents =
     [
@@ -53,12 +55,14 @@ public sealed class DownloadService
     // Dependencies
     // ---------------------------------------------------------------
     private readonly HttpClient _http;
+    private readonly HttpClient _downloadHttp;
     private readonly ILogger<DownloadService> _logger;
     private readonly Random _rng = new();
 
     public DownloadService(IHttpClientFactory httpClientFactory, ILogger<DownloadService> logger)
     {
         _http = httpClientFactory.CreateClient("voe");
+        _downloadHttp = httpClientFactory.CreateClient("voe-download");
         _logger = logger;
     }
 
@@ -101,10 +105,20 @@ public sealed class DownloadService
         Directory.CreateDirectory(outputDir);
 
         // The _SS suffix ("stream source") is kept from the original dl.py naming convention.
-        var outputTemplate = Path.Combine(outputDir, $"{SanitizeFilename(name)}_SS.%(ext)s");
-        logCallback($"[*] Output path: {outputTemplate}");
+        var baseName = $"{SanitizeFilename(name)}_SS";
         logCallback($"[*] Downloading {mediaType} stream: {sourceUrl}");
 
+        // Direct MP4 URLs are downloaded via HttpClient to avoid requiring yt-dlp locally.
+        // HLS/DASH manifests still need yt-dlp for muxing.
+        if (mediaType == "mp4")
+        {
+            var outputPath = Path.Combine(outputDir, $"{baseName}.mp4");
+            logCallback($"[*] Output path: {outputPath}");
+            return await DownloadMp4DirectAsync(sourceUrl, outputPath, logCallback, cancellationToken);
+        }
+
+        var outputTemplate = Path.Combine(outputDir, $"{baseName}.%(ext)s");
+        logCallback($"[*] Output path: {outputTemplate}");
         return await RunYtDlpAsync(sourceUrl, outputTemplate, logCallback, cancellationToken);
     }
 
@@ -440,6 +454,66 @@ public sealed class DownloadService
             }
         }
         return (null, "");
+    }
+
+    // ---------------------------------------------------------------
+    // Direct MP4 downloader (no yt-dlp required)
+    // ---------------------------------------------------------------
+    private async Task<int> DownloadMp4DirectAsync(
+        string mediaUrl,
+        string outputPath,
+        Action<string> log,
+        CancellationToken ct)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, mediaUrl);
+            AddBrowserHeaders(request, mediaUrl);
+
+            using var response = await _downloadHttp.SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, ct);
+            response.EnsureSuccessStatusCode();
+
+            long? totalBytes = response.Content.Headers.ContentLength;
+            string totalStr = totalBytes.HasValue
+                ? $"{totalBytes.Value / 1_048_576.0:F1} MB"
+                : "unknown size";
+            log($"[*] File size: {totalStr}");
+
+            await using var src = await response.Content.ReadAsStreamAsync(ct);
+            await using var dst = new FileStream(
+                outputPath, FileMode.Create, FileAccess.Write, FileShare.None,
+                bufferSize: DownloadBufferSize, useAsync: true);
+
+            var buffer = new byte[DownloadBufferSize];
+            long written = 0;
+            long nextLogAt = DownloadLogIntervalBytes;
+            int read;
+            while ((read = await src.ReadAsync(buffer, ct)) > 0)
+            {
+                await dst.WriteAsync(buffer.AsMemory(0, read), ct);
+                written += read;
+                if (written >= nextLogAt)
+                {
+                    log($"[*] Downloaded {written / 1_048_576.0:F1} MB" +
+                        (totalBytes.HasValue ? $" / {totalStr}" : ""));
+                    nextLogAt += DownloadLogIntervalBytes;
+                }
+            }
+
+            log($"[+] Done — {written / 1_048_576.0:F1} MB saved to {outputPath}");
+            return 0;
+        }
+        catch (OperationCanceledException)
+        {
+            log("[!] Download cancelled.");
+            return 1;
+        }
+        catch (Exception ex)
+        {
+            log($"[!] Direct download failed: {ex.Message}");
+            return 1;
+        }
     }
 
     // ---------------------------------------------------------------
