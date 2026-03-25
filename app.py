@@ -10,10 +10,16 @@ from version import VOE_DL_VERSION
 app = Flask(__name__)
 
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DOWNLOAD_DIR = (
+_raw_download_dir = (
     os.environ.get('DOWNLOAD_DIR')
     or os.environ.get('DOWNLOAD_PATH')
-    or os.path.join(_APP_DIR, 'downloads')
+    or '/downloads'
+)
+# Resolve to an absolute path so that subprocess(cwd=...) always gets an
+# absolute directory regardless of what the caller passed in.
+DOWNLOAD_DIR = (
+    _raw_download_dir if os.path.isabs(_raw_download_dir)
+    else os.path.abspath(_raw_download_dir)
 )
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 

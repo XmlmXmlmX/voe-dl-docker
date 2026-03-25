@@ -20,6 +20,19 @@ PIPED = not sys.stdout.isatty() and not os.environ.get('VOE_DL_FORCE_DOWNLOAD')
 # When CREATE_SUBFOLDER=1, each download is placed in a sub-directory named after the video title
 CREATE_SUBFOLDER = os.environ.get('CREATE_SUBFOLDER', '0') == '1'
 
+# Resolve the download directory once at import time.
+# Prefer DOWNLOAD_DIR, then DOWNLOAD_PATH, then fall back to /downloads
+# (the container's designated mount point, matching the default in app.py).
+_raw_dl_dir = (
+    os.environ.get('DOWNLOAD_DIR')
+    or os.environ.get('DOWNLOAD_PATH')
+    or '/downloads'
+)
+DOWNLOAD_DIR = (
+    _raw_dl_dir if os.path.isabs(_raw_dl_dir)
+    else os.path.abspath(_raw_dl_dir)
+)
+
 # If stdout is being piped, redirect all print() to a StringIO buffer
 if PIPED:
     sys.stdout_buffer = StringIO()
@@ -788,16 +801,20 @@ def make_folder_name(raw_name):
 def build_outtmpl(name, folder_name):
     """Return the yt-dlp output template path.
 
+    Paths are always absolute (rooted at *DOWNLOAD_DIR*) so that the correct
+    directory is used regardless of the process working directory.
+
     When *CREATE_SUBFOLDER* is enabled the file is placed inside a
     sub-directory named *folder_name*, which is created if needed.
     """
     if CREATE_SUBFOLDER and folder_name:
-        os.makedirs(folder_name, exist_ok=True)
-        print(f"[*] Saving to subfolder: {folder_name}")
-        outtmpl = os.path.join(folder_name, name)
+        subfolder = os.path.join(DOWNLOAD_DIR, folder_name)
+        os.makedirs(subfolder, exist_ok=True)
+        print(f"[*] Saving to subfolder: {subfolder}")
+        outtmpl = os.path.join(subfolder, name)
     else:
-        outtmpl = name
-    print(f"[*] Output path: {os.path.abspath(outtmpl)}")
+        outtmpl = os.path.join(DOWNLOAD_DIR, name)
+    print(f"[*] Output path: {outtmpl}")
     return outtmpl
 
 def is_bait_source(source: str) -> bool:
