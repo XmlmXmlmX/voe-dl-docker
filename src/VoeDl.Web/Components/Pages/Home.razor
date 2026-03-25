@@ -8,153 +8,169 @@
 
 <PageTitle>voe-dl</PageTitle>
 
-<div class="container py-4" style="max-width: 860px;">
+<MudContainer MaxWidth="MaxWidth.Medium" Class="py-6">
 
-    <div class="d-flex align-items-center mb-1">
-        <h1 class="h3 mb-0 me-2">🎬 voe-dl</h1>
-        <span class="text-muted small">Web Interface</span>
-    </div>
-    <p class="text-muted mb-4">
-        Videos von <a href="https://voe.sx" target="_blank" rel="noopener">voe.sx</a> herunterladen
-    </p>
+    <MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">
+        Videos von <MudLink Href="https://voe.sx" Target="_blank" rel="noopener">voe.sx</MudLink> herunterladen
+    </MudText>
 
     <!-- Input form -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
+    <MudCard Elevation="2" Class="mb-4">
+        <MudCardContent>
             <EditForm Model="_model" OnValidSubmit="StartDownloads">
-                <div class="mb-3">
-                    <label for="urls" class="form-label fw-semibold">
-                        URL(s) eingeben <span class="text-muted fw-normal">(eine URL pro Zeile)</span>
-                    </label>
-                    <InputTextArea id="urls" class="form-control font-monospace" rows="4"
-                                   @bind-Value="_model.RawUrls"
-                                   placeholder="https://voe.sx/xxxxxxx&#10;https://voe.sx/yyyyyyy" />
-                </div>
+                <MudTextField @bind-Value="_model.RawUrls"
+                              Label="URL(s) eingeben"
+                              HelperText="Eine URL pro Zeile"
+                              Lines="4"
+                              Variant="Variant.Outlined"
+                              Class="mb-2"
+                              Placeholder="https://voe.sx/xxxxxxx&#10;https://voe.sx/yyyyyyy"
+                              Style="font-family: monospace;" />
 
                 @if (_duplicates.Count > 0)
                 {
-                    <div class="alert alert-warning">
-                        <strong>Bereits heruntergeladen:</strong>
-                        <ul class="mb-2 mt-1">
-                            @foreach (var u in _duplicates)
-                            {
-                                <li class="font-monospace small text-break">@u</li>
-                            }
-                        </ul>
-                        <button type="button" class="btn btn-sm btn-warning me-2"
-                                @onclick="ForceDownload">Erneut herunterladen</button>
-                        <button type="button" class="btn btn-sm btn-secondary"
-                                @onclick="ClearDuplicateWarning">Abbrechen</button>
-                    </div>
+                    <MudAlert Severity="Severity.Warning" Class="mb-3" Variant="Variant.Outlined">
+                        <MudText Typo="Typo.body2" Class="mb-1"><strong>Bereits heruntergeladen:</strong></MudText>
+                        @foreach (var u in _duplicates)
+                        {
+                            <MudText Typo="Typo.caption" Style="font-family:monospace; word-break:break-all;">@u</MudText>
+                        }
+                        <div class="mt-2">
+                            <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small"
+                                       Class="mr-2" OnClick="ForceDownload">Erneut herunterladen</MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                                       OnClick="ClearDuplicateWarning">Abbrechen</MudButton>
+                        </div>
+                    </MudAlert>
                 }
                 else
                 {
-                    <button type="submit" class="btn btn-primary px-4">⬇ Download starten</button>
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled"
+                               Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download">
+                        Download starten
+                    </MudButton>
                 }
             </EditForm>
-        </div>
-    </div>
+        </MudCardContent>
+    </MudCard>
 
     <!-- Download history -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center py-2">
-            <span class="fw-semibold">Heruntergeladene URLs</span>
-            <span class="badge bg-secondary">@_history.Count</span>
-        </div>
-        <div style="max-height:220px; overflow-y:auto;">
+    <MudCard Elevation="2" Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">Heruntergeladene URLs</MudText>
+            </CardHeaderContent>
+            <CardHeaderActions>
+                <MudChip T="string" Color="Color.Default" Size="Size.Small">@_history.Count</MudChip>
+            </CardHeaderActions>
+        </MudCardHeader>
+        <MudCardContent Class="pa-0">
             @if (_history.Count == 0)
             {
-                <div class="card-body py-2">
-                    <p class="text-muted mb-0 small">Noch keine URLs heruntergeladen.</p>
-                </div>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-4">
+                    Noch keine URLs heruntergeladen.
+                </MudText>
             }
             else
             {
-                <ul class="list-group list-group-flush">
+                <MudList T="string" Dense="true" Style="max-height:220px; overflow-y:auto;">
                     @foreach (var url in ((IEnumerable<string>)_history).Reverse())
                     {
-                        <li class="list-group-item text-truncate py-1 px-3">
-                            <a href="@url" target="_blank" rel="noopener"
-                               class="text-decoration-none font-monospace small text-muted">@url</a>
-                        </li>
+                        <MudListItem T="string">
+                            <MudLink Href="@url" Target="_blank" rel="noopener"
+                                     Typo="Typo.caption" Style="font-family:monospace; word-break:break-all;">
+                                @url
+                            </MudLink>
+                        </MudListItem>
                     }
-                </ul>
+                </MudList>
             }
-        </div>
-    </div>
+        </MudCardContent>
+    </MudCard>
 
-    <!-- Job list -->
-    <div class="d-flex justify-content-between align-items-center mb-2">
-        <h2 class="h5 mb-0">Downloads</h2>
-        <span class="text-muted small">
-            @if (_lastUpdated.HasValue)
-            {
-                <text>Zuletzt aktualisiert: @_lastUpdated.Value.ToLocalTime().ToString("HH:mm:ss")</text>
-            }
-        </span>
+    <!-- Job list header -->
+    <div class="d-flex justify-space-between align-center mb-3">
+        <MudText Typo="Typo.h6">Downloads</MudText>
+        @if (_lastUpdated.HasValue)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Zuletzt aktualisiert: @_lastUpdated.Value.ToLocalTime().ToString("HH:mm:ss")
+            </MudText>
+        }
     </div>
 
     @if (_jobs.Count == 0)
     {
-        <p class="text-muted">Noch keine Downloads gestartet.</p>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Noch keine Downloads gestartet.</MudText>
     }
     else
     {
         @foreach (var job in _jobs)
         {
-            <div class="card shadow-sm mb-3">
-                <div class="card-body pb-2">
-                    <div class="d-flex justify-content-between align-items-start mb-1">
-                        <span class="text-truncate me-2" style="max-width:70%;">
-                            <a href="@job.Url" target="_blank" rel="noopener"
-                               class="text-decoration-none text-body">
+            <MudCard Elevation="2" Class="mb-3">
+                <MudCardContent>
+                    <div class="d-flex justify-space-between align-start">
+                        <div style="min-width:0; flex:1; margin-right:12px;">
+                            <MudLink Href="@job.Url" Target="_blank" rel="noopener"
+                                     Typo="Typo.body1" Color="Color.Default"
+                                     Style="word-break:break-all;">
                                 @(job.Title ?? job.Url)
-                            </a>
+                            </MudLink>
                             @if (job.Title is not null)
                             {
-                                <br /><small class="text-muted font-monospace">@job.Url</small>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary"
+                                         Style="font-family:monospace; word-break:break-all;">
+                                    @job.Url
+                                </MudText>
                             }
-                        </span>
-                        <span class="d-flex align-items-center flex-shrink-0">
-                            <span class="badge rounded-pill @StatusBadgeClass(job.Status) status-badge">
-                                @if (job.Status == JobStatus.Running)
-                                {
-                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                }
+                        </div>
+                        <div class="d-flex align-center flex-shrink-0">
+                            @if (job.Status == JobStatus.Running)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true"
+                                                     Color="Color.Primary" Class="mr-2" />
+                            }
+                            <MudChip T="string" Color="@StatusChipColor(job.Status)"
+                                     Size="Size.Small" Class="mr-1">
                                 @job.Status.ToString().ToLowerInvariant()
-                            </span>
+                            </MudChip>
                             @if (job.Status is JobStatus.Pending or JobStatus.Running)
                             {
-                                <button class="btn btn-sm btn-outline-danger ms-2"
-                                        @onclick="() => AbortJob(job.Id)">⏹ Abbrechen</button>
+                                <MudIconButton Icon="@Icons.Material.Filled.Stop"
+                                               Color="Color.Error" Size="Size.Small"
+                                               title="Abbrechen"
+                                               OnClick="() => AbortJob(job.Id)" />
                             }
                             else if (job.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted)
                             {
-                                <button class="btn btn-sm btn-outline-secondary ms-2"
-                                        @onclick="() => RequeueJob(job.Id)">🔄 Erneut</button>
+                                <MudIconButton Icon="@Icons.Material.Filled.Replay"
+                                               Color="Color.Default" Size="Size.Small"
+                                               title="Erneut herunterladen"
+                                               OnClick="() => RequeueJob(job.Id)" />
                             }
-                        </span>
+                        </div>
                     </div>
                     @if (!string.IsNullOrWhiteSpace(job.Logs))
                     {
-                        <details @key="@($"details-{job.Id}")"
-                                 open="@(job.Status == JobStatus.Running)">
-                            <summary class="text-muted small" style="cursor:pointer;">
-                                @(job.Status == JobStatus.Running ? "Live-Log" : "Log anzeigen")
-                            </summary>
-                            <div class="log-box mt-2">@job.Logs</div>
-                        </details>
+                        <MudExpansionPanels Class="mt-2" Elevation="0">
+                            <MudExpansionPanel Text="@(job.Status == JobStatus.Running ? "Live-Log" : "Log anzeigen")"
+                                               Expanded="@(job.Status == JobStatus.Running)"
+                                               Dense="true">
+                                <div class="log-box">@job.Logs</div>
+                            </MudExpansionPanel>
+                        </MudExpansionPanels>
                     }
-                </div>
-            </div>
+                </MudCardContent>
+            </MudCard>
         }
     }
 
-    <footer class="text-center text-muted small mt-4 pt-3 border-top">
+    <MudDivider Class="mt-4 mb-2" />
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Align="Align.Center">
         voe-dl-docker @(Config["APP_VERSION"] ?? "dev")
-    </footer>
+    </MudText>
 
-</div>
+</MudContainer>
 
 @code {
     private sealed class DownloadModel
@@ -225,13 +241,13 @@
            .Where(l => l.Length > 0 && !l.StartsWith('#'))
            .ToList();
 
-    private static string StatusBadgeClass(JobStatus status) => status switch
+    private static Color StatusChipColor(JobStatus status) => status switch
     {
-        JobStatus.Done    => "bg-success",
-        JobStatus.Error   => "bg-danger",
-        JobStatus.Running => "bg-primary",
-        JobStatus.Aborted => "bg-warning text-dark",
-        _                 => "bg-secondary",
+        JobStatus.Done    => Color.Success,
+        JobStatus.Error   => Color.Error,
+        JobStatus.Running => Color.Primary,
+        JobStatus.Aborted => Color.Warning,
+        _                 => Color.Default,
     };
 
     public void Dispose() => JobManager.JobsChanged -= OnJobsChanged;
