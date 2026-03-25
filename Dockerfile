@@ -11,7 +11,7 @@ COPY . .
 
 # Directory for downloaded files (mount a host volume here)
 RUN mkdir -p /downloads
-ENV DOWNLOAD_PATH=/downloads
+ENV DOWNLOAD_DIR=/downloads
 
 # Bake the app version into the image at build time.
 # Pass --build-arg APP_VERSION=<tag> when building, e.g. via CI.
