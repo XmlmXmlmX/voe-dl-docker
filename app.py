@@ -10,7 +10,11 @@ from version import VOE_DL_VERSION
 app = Flask(__name__)
 
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DOWNLOAD_DIR = os.environ.get('DOWNLOAD_DIR', os.path.join(_APP_DIR, 'downloads'))
+DOWNLOAD_DIR = (
+    os.environ.get('DOWNLOAD_DIR')
+    or os.environ.get('DOWNLOAD_PATH')
+    or os.path.join(_APP_DIR, 'downloads')
+)
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 HISTORY_FILE = os.path.join(DOWNLOAD_DIR, 'downloaded_urls.txt')

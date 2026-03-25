@@ -11,7 +11,7 @@ COPY . .
 
 # Directory for downloaded files (mount a host volume here)
 RUN mkdir -p /downloads
-ENV DOWNLOAD_DIR=/downloads
+ENV DOWNLOAD_PATH=/downloads
 
 EXPOSE 5000
 

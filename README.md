@@ -53,20 +53,24 @@ docker compose up -d
 
 ### TrueNAS Scale
 
-In TrueNAS Scale's Docker (or Apps) configuration, map your dataset as the host path and `/downloads` as the container path.
+In TrueNAS Scale's Docker (or Apps) configuration, set the **container path** for the storage mount and then tell the app about it via the `DOWNLOAD_PATH` environment variable:
 
-Alternatively, add a `.env` file with `DOWNLOAD_PATH` pointing to your TrueNAS dataset mount:
+1. Add a storage mount in the TrueNAS app UI:
+   - **Host path**: your NAS dataset (e.g. `/mnt/pool/dataset/movies`)
+   - **Mount path (container path)**: e.g. `/downloads`
+2. Set the environment variable `DOWNLOAD_PATH` to match the container mount path:
+   ```
+   DOWNLOAD_PATH=/downloads
+   ```
 
-```env
-DOWNLOAD_PATH=/mnt/pool/dataset/movies
-```
+The app checks `DOWNLOAD_DIR` first, then `DOWNLOAD_PATH`, so you only need to set one of them.
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DOWNLOAD_PATH` | `./downloads` | **Host** path where downloaded videos are stored |
-| `DOWNLOAD_DIR` | `/downloads` | **Container** path for downloads (must match the volume's container path) |
+| `DOWNLOAD_PATH` | `./downloads` | Download directory — used as the **container** path in TrueNAS/direct Docker setups, and as the **host** path for the volume mount in `docker compose` |
+| `DOWNLOAD_DIR` | `/downloads` | Alternative way to set the **container** download path (overrides `DOWNLOAD_PATH` if both are set) |
 | `DOWNLOAD_TIMEOUT` | `3600` | Max download time in seconds before a job is cancelled |
 | `CREATE_SUBFOLDER` | `0` | Set to `1` to save each download in its own sub-directory named after the video title |
 | `HOST` | `0.0.0.0` | Flask server listen address |
