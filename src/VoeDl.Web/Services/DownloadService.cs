@@ -100,6 +100,7 @@ public sealed class DownloadService
 
         Directory.CreateDirectory(outputDir);
 
+        // The _SS suffix ("stream source") is kept from the original dl.py naming convention.
         var outputTemplate = Path.Combine(outputDir, $"{SanitizeFilename(name)}_SS.%(ext)s");
         logCallback($"[*] Output path: {outputTemplate}");
         logCallback($"[*] Downloading {mediaType} stream: {sourceUrl}");
