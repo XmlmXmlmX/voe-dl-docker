@@ -73,9 +73,15 @@ def run_download(job_id, url):
             if time.time() > deadline:
                 proc.kill()
                 raise subprocess.TimeoutExpired(proc.args, DOWNLOAD_TIMEOUT)
-            log_lines.append(line.rstrip('\n'))
+            stripped = line.rstrip('\n')
+            log_lines.append(stripped)
             with jobs_lock:
                 jobs[job_id]['logs'] = '\n'.join(log_lines)
+                # Extract title from dl.py output as soon as it is resolved
+                for prefix in ('Name of file: ', 'Using default file name: '):
+                    if stripped.startswith(prefix):
+                        jobs[job_id]['title'] = stripped[len(prefix):]
+                        break
 
         proc.wait()
         with jobs_lock:
@@ -126,6 +132,7 @@ def start_download():
             jobs[job_id] = {
                 'id': job_id,
                 'url': url,
+                'title': None,
                 'status': 'pending',
                 'created_at': time.time(),
                 'started_at': None,
