@@ -1,4 +1,6 @@
+using Microsoft.EntityFrameworkCore;
 using VoeDl.Web.Components;
+using VoeDl.Web.Data;
 using VoeDl.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,6 +35,13 @@ builder.Services.AddHttpClient("tmdb", (sp, client) =>
 });
 
 // Core application services
+var pgConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (!string.IsNullOrWhiteSpace(pgConnectionString))
+{
+    builder.Services.AddDbContextFactory<AppDbContext>(options =>
+        options.UseNpgsql(pgConnectionString));
+}
+
 builder.Services.AddSingleton<TmdbService>();
 builder.Services.AddSingleton<DownloadService>();
 builder.Services.AddSingleton<JobManagerService>();
@@ -42,6 +51,15 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 var app = builder.Build();
+
+// Apply database schema if PostgreSQL is configured
+if (!string.IsNullOrWhiteSpace(pgConnectionString))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
+    await using var ctx = await db.CreateDbContextAsync();
+    await ctx.Database.MigrateAsync();
+}
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

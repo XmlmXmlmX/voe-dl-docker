@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using Microsoft.EntityFrameworkCore;
+using VoeDl.Web.Data;
 using VoeDl.Web.Models;
 
 namespace VoeDl.Web.Services;
@@ -15,6 +17,7 @@ public sealed class JobManagerService
 
     private readonly DownloadService _downloader;
     private readonly ILogger<JobManagerService> _logger;
+    private readonly IDbContextFactory<AppDbContext>? _dbFactory;
 
     private readonly string _downloadDir;
     private readonly string _historyFile;
@@ -26,10 +29,12 @@ public sealed class JobManagerService
     public JobManagerService(
         DownloadService downloadService,
         ILogger<JobManagerService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IServiceProvider services)
     {
         _downloader = downloadService;
         _logger = logger;
+        _dbFactory = services.GetService<IDbContextFactory<AppDbContext>>();
 
         string rawDir = configuration["DOWNLOAD_DIR"]
                        ?? configuration["DOWNLOAD_PATH"]
@@ -99,6 +104,15 @@ public sealed class JobManagerService
     /// <summary>Returns all URLs that were successfully downloaded (chronological).</summary>
     public async Task<IReadOnlyList<string>> LoadHistoryAsync()
     {
+        if (_dbFactory is not null)
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            return await db.DownloadHistory
+                .OrderBy(e => e.FinishedAt)
+                .Select(e => e.Url)
+                .ToListAsync();
+        }
+
         var urls = new List<string>();
         await _historyLock.WaitAsync();
         try
@@ -113,6 +127,19 @@ public sealed class JobManagerService
         }
         finally { _historyLock.Release(); }
         return urls;
+    }
+
+    /// <summary>
+    /// Returns full history entries ordered newest-first.
+    /// Only available when PostgreSQL is configured; returns an empty list otherwise.
+    /// </summary>
+    public async Task<IReadOnlyList<DownloadHistoryEntry>> LoadHistoryEntriesAsync()
+    {
+        if (_dbFactory is null) return [];
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.DownloadHistory
+            .OrderByDescending(e => e.FinishedAt)
+            .ToListAsync();
     }
 
     // ------------------------------------------------------------------
@@ -165,7 +192,7 @@ public sealed class JobManagerService
             }
 
             if (exitCode == 0)
-                await AppendToHistoryAsync(job.Url);
+                await AppendToHistoryAsync(job);
         }
         catch (OperationCanceledException)
         {
@@ -193,10 +220,25 @@ public sealed class JobManagerService
         }
     }
 
-    private async Task AppendToHistoryAsync(string url)
+    private async Task AppendToHistoryAsync(DownloadJob job)
     {
+        if (_dbFactory is not null)
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            db.DownloadHistory.Add(new DownloadHistoryEntry
+            {
+                Id = job.Id,
+                Url = job.Url,
+                Title = job.Title,
+                CreatedAt = job.CreatedAt,
+                FinishedAt = job.FinishedAt ?? DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+            return;
+        }
+
         await _historyLock.WaitAsync();
-        try { await File.AppendAllTextAsync(_historyFile, url + "\n"); }
+        try { await File.AppendAllTextAsync(_historyFile, job.Url + "\n"); }
         finally { _historyLock.Release(); }
     }
 

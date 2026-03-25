@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @rendermode InteractiveServer
 @using VoeDl.Web.Models
 @using VoeDl.Web.Services
@@ -67,6 +67,30 @@
                 <div class="card-body py-2">
                     <p class="text-muted mb-0 small">Noch keine URLs heruntergeladen.</p>
                 </div>
+            }
+            else if (_historyEntries.Count > 0)
+            {
+                <ul class="list-group list-group-flush">
+                    @foreach (var entry in _historyEntries)
+                    {
+                        <li class="list-group-item py-1 px-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <a href="@entry.Url" target="_blank" rel="noopener"
+                                   class="text-decoration-none font-monospace small text-muted text-truncate me-2"
+                                   style="max-width:70%;">
+                                    @(entry.Title ?? entry.Url)
+                                </a>
+                                <span class="text-muted small flex-shrink-0">
+                                    @entry.FinishedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                                </span>
+                            </div>
+                            @if (entry.Title is not null)
+                            {
+                                <small class="text-muted font-monospace" style="font-size:.7rem;">@entry.Url</small>
+                            }
+                        </li>
+                    }
+                </ul>
             }
             else
             {
@@ -165,6 +189,7 @@
     private readonly DownloadModel _model = new();
     private List<DownloadJob> _jobs = [];
     private List<string> _history = [];
+    private List<DownloadHistoryEntry> _historyEntries = [];
     private List<string> _duplicates = [];
     private DateTimeOffset? _lastUpdated;
 
@@ -173,13 +198,31 @@
         JobManager.JobsChanged += OnJobsChanged;
         _jobs = [.. JobManager.GetJobs()];
         _history = [.. await JobManager.LoadHistoryAsync()];
+        _historyEntries = [.. await JobManager.LoadHistoryEntriesAsync()];
     }
 
     private void OnJobsChanged()
     {
         _jobs = [.. JobManager.GetJobs()];
         _lastUpdated = DateTimeOffset.UtcNow;
-        InvokeAsync(StateHasChanged);
+        // Refresh history in the background when a job finishes
+        var recentlyFinished = _jobs.Any(j =>
+            j.Status is JobStatus.Done &&
+            j.FinishedAt.HasValue &&
+            DateTimeOffset.UtcNow - j.FinishedAt.Value < TimeSpan.FromSeconds(5));
+        if (recentlyFinished)
+        {
+            InvokeAsync(async () =>
+            {
+                _history = [.. await JobManager.LoadHistoryAsync()];
+                _historyEntries = [.. await JobManager.LoadHistoryEntriesAsync()];
+                StateHasChanged();
+            });
+        }
+        else
+        {
+            InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task StartDownloads()
