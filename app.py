@@ -28,7 +28,7 @@ HISTORY_FILE = os.path.join(DOWNLOAD_DIR, 'downloaded_urls.txt')
 SCRIPT_PATH = os.path.join(_APP_DIR, 'dl.py')
 DOWNLOAD_TIMEOUT = int(os.environ.get('DOWNLOAD_TIMEOUT', 3600))  # seconds
 
-APP_VERSION = os.environ.get('APP_VERSION', 'v1.0.1')
+APP_VERSION = os.environ.get('APP_VERSION', 'dev')
 
 # In-memory job store (sufficient for a single-container deployment)
 jobs = {}
