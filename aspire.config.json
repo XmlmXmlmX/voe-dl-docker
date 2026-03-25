@@ -1,0 +1,5 @@
+{
+  "appHost": {
+    "path": "src/VoeDl.AppHost/VoeDl.AppHost.csproj"
+  }
+}
