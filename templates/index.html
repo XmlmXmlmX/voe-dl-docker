@@ -110,10 +110,16 @@
             {% if job.status == 'done' %}bg-success
             {% elif job.status == 'error' %}bg-danger
             {% elif job.status == 'running' %}bg-primary
+            {% elif job.status == 'aborted' %}bg-warning text-dark
             {% else %}bg-secondary{% endif %} status-badge">
             {% if job.status == 'running' %}<span class="spinner-border spinner-border-sm me-1" role="status"></span>{% endif %}
             {{ job.status }}
           </span>
+          {% if job.status in ('pending', 'running') %}
+          <button class="btn btn-sm btn-outline-danger ms-2" onclick="abortJob('{{ job.id }}')">⏹ Abbrechen</button>
+          {% elif job.status in ('done', 'error', 'aborted') %}
+          <button class="btn btn-sm btn-outline-secondary ms-2" onclick="requeueJob('{{ job.id }}')">🔄 Erneut</button>
+          {% endif %}
         </div>
         {% if job.logs %}
         <details class="mt-1" {% if job.status == 'running' %}open{% endif %}>
@@ -171,7 +177,8 @@
       done: 'bg-success',
       error: 'bg-danger',
       running: 'bg-primary',
-      pending: 'bg-secondary'
+      pending: 'bg-secondary',
+      aborted: 'bg-warning text-dark'
     };
     const spinner = status === 'running'
       ? '<span class="spinner-border spinner-border-sm me-1" role="status"></span>'
@@ -189,6 +196,11 @@
            <div class="log-box mt-2" ${logId}>${escHtml(job.logs)}</div>
          </details>`
       : '';
+    const actionBtn = (job.status === 'pending' || job.status === 'running')
+      ? `<button class="btn btn-sm btn-outline-danger ms-2" onclick="abortJob('${job.id}')">⏹ Abbrechen</button>`
+      : (job.status === 'done' || job.status === 'error' || job.status === 'aborted')
+        ? `<button class="btn btn-sm btn-outline-secondary ms-2" onclick="requeueJob('${job.id}')">🔄 Erneut</button>`
+        : '';
     return `
       <div class="card shadow-sm mb-3" id="job-${job.id}">
         <div class="card-body pb-2">
@@ -197,7 +209,10 @@
               <a href="${escHtml(job.url)}" target="_blank" rel="noopener" class="text-decoration-none text-body">${job.title ? escHtml(job.title) : escHtml(job.url)}</a>
               ${job.title ? `<br><small class="text-muted font-monospace">${escHtml(job.url)}</small>` : ''}
             </span>
-            ${statusBadge(job.status)}
+            <span class="d-flex align-items-center flex-shrink-0">
+              ${statusBadge(job.status)}
+              ${actionBtn}
+            </span>
           </div>
           ${logSection}
         </div>
@@ -319,6 +334,18 @@
       if (redownloadModal) redownloadModal.hide();
       if (downloadForm) downloadForm.submit();
     });
+  }
+
+  function abortJob(jobId) {
+    fetch(`/abort/${jobId}`, {method: 'POST'})
+      .then(() => refreshJobs())
+      .catch(err => { console.error('Abort request failed:', err); });
+  }
+
+  function requeueJob(jobId) {
+    fetch(`/requeue/${jobId}`, {method: 'POST'})
+      .then(() => refreshJobs())
+      .catch(err => { console.error('Requeue request failed:', err); });
   }
 
   // Poll every POLL_INTERVAL_MS

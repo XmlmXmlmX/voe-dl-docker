@@ -26,6 +26,7 @@ APP_VERSION = os.environ.get('APP_VERSION', 'v1.0.1')
 
 # In-memory job store (sufficient for a single-container deployment)
 jobs = {}
+job_procs = {}  # job_id -> subprocess.Popen (not serialised to JSON)
 jobs_lock = threading.Lock()
 history_lock = threading.Lock()
 
@@ -52,6 +53,10 @@ def log_url_to_history(url):
 
 def run_download(job_id, url):
     with jobs_lock:
+        # Abort was requested before the thread even started the subprocess
+        if jobs[job_id]['status'] == 'aborted':
+            jobs[job_id]['finished_at'] = time.time()
+            return
         jobs[job_id]['status'] = 'running'
         jobs[job_id]['started_at'] = time.time()
 
@@ -67,12 +72,20 @@ def run_download(job_id, url):
             env=env,
         )
 
+        with jobs_lock:
+            job_procs[job_id] = proc
+
         log_lines = []
         deadline = time.time() + DOWNLOAD_TIMEOUT
         for line in proc.stdout:
             if time.time() > deadline:
                 proc.kill()
                 raise subprocess.TimeoutExpired(proc.args, DOWNLOAD_TIMEOUT)
+            # Check if abort was requested while we were reading output
+            with jobs_lock:
+                if jobs[job_id]['status'] == 'aborted':
+                    proc.kill()
+                    break
             stripped = line.rstrip('\n')
             log_lines.append(stripped)
             with jobs_lock:
@@ -86,21 +99,25 @@ def run_download(job_id, url):
         proc.wait()
         with jobs_lock:
             jobs[job_id]['returncode'] = proc.returncode
-            jobs[job_id]['status'] = 'done' if proc.returncode == 0 else 'error'
+            if jobs[job_id]['status'] != 'aborted':
+                jobs[job_id]['status'] = 'done' if proc.returncode == 0 else 'error'
         if proc.returncode == 0:
             log_url_to_history(url)
     except subprocess.TimeoutExpired:
         with jobs_lock:
-            jobs[job_id]['status'] = 'error'
+            if jobs[job_id]['status'] != 'aborted':
+                jobs[job_id]['status'] = 'error'
             jobs[job_id]['logs'] = (jobs[job_id].get('logs') or '') + \
                 f'\nDownload timed out after {DOWNLOAD_TIMEOUT} seconds.'
     except Exception as exc:
         with jobs_lock:
-            jobs[job_id]['status'] = 'error'
+            if jobs[job_id]['status'] != 'aborted':
+                jobs[job_id]['status'] = 'error'
             jobs[job_id]['logs'] = (jobs[job_id].get('logs') or '') + '\n' + str(exc)
-
-    with jobs_lock:
-        jobs[job_id]['finished_at'] = time.time()
+    finally:
+        with jobs_lock:
+            job_procs.pop(job_id, None)
+            jobs[job_id]['finished_at'] = time.time()
 
 
 @app.route('/')
@@ -164,6 +181,50 @@ def get_status(job_id):
     if not job:
         return jsonify({'error': 'Job not found'}), 404
     return jsonify(job)
+
+
+@app.route('/abort/<job_id>', methods=['POST'])
+def abort_job(job_id):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return jsonify({'error': 'Job not found'}), 404
+        if job['status'] not in ('pending', 'running'):
+            return jsonify({'error': 'Job is not running'}), 400
+        job['status'] = 'aborted'
+        proc = job_procs.pop(job_id, None)
+    if proc:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    return jsonify({'id': job_id, 'status': 'aborted'})
+
+
+@app.route('/requeue/<job_id>', methods=['POST'])
+def requeue_job(job_id):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job:
+            return jsonify({'error': 'Job not found'}), 404
+        if job['status'] not in ('done', 'error', 'aborted'):
+            return jsonify({'error': 'Job is not finished'}), 400
+        url = job['url']
+
+    new_job_id = str(uuid.uuid4())
+    with jobs_lock:
+        jobs[new_job_id] = {
+            'id': new_job_id,
+            'url': url,
+            'status': 'pending',
+            'created_at': time.time(),
+            'started_at': None,
+            'finished_at': None,
+            'logs': '',
+        }
+    t = threading.Thread(target=run_download, args=(new_job_id, url), daemon=True)
+    t.start()
+    return jsonify({'id': new_job_id, 'status': 'pending'})
 
 
 if __name__ == '__main__':
