@@ -485,19 +485,55 @@ public sealed class DownloadService
 
     private static string FindYtDlp()
     {
-        // Check common locations in order
-        foreach (var candidate in new[] { "yt-dlp", "/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp" })
+        // Allow an explicit override via environment variable (useful on Windows dev machines)
+        var envPath = Environment.GetEnvironmentVariable("YT_DLP_PATH");
+        if (!string.IsNullOrWhiteSpace(envPath))
+        {
+            if (File.Exists(envPath))
+                return envPath;
+            throw new FileNotFoundException(
+                $"YT_DLP_PATH is set to '{envPath}' but the file does not exist.");
+        }
+
+        // Build the list of candidates to probe.  On Windows we also look for
+        // the .exe variant because IsOnPath() must match the actual filename.
+        bool isWindows = OperatingSystem.IsWindows();
+        var candidates = isWindows
+            ? new[] { "yt-dlp.exe", "yt-dlp" }
+            : new[] { "yt-dlp", "/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp" };
+
+        foreach (var candidate in candidates)
         {
             if (File.Exists(candidate) || IsOnPath(candidate))
                 return candidate;
         }
-        return "yt-dlp"; // let the OS resolve it
+
+        // Binary not found – give the user an actionable message instead of a
+        // cryptic OS "file not found" error from Process.Start().
+        throw new FileNotFoundException(
+            "yt-dlp binary could not be found. " +
+            "Install it (https://github.com/yt-dlp/yt-dlp#installation) and ensure it is on " +
+            "your PATH, or set the YT_DLP_PATH environment variable to its full path.");
     }
 
     private static bool IsOnPath(string name)
     {
         var paths = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator);
-        return paths.Any(p => File.Exists(Path.Combine(p, name)));
+
+        // On Windows, also honour PATHEXT so we find both "yt-dlp" and "yt-dlp.exe".
+        IEnumerable<string> candidates;
+        if (OperatingSystem.IsWindows() && !Path.HasExtension(name))
+        {
+            var extensions = (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT")
+                .Split(';', StringSplitOptions.RemoveEmptyEntries);
+            candidates = extensions.Select(ext => name + ext).Prepend(name);
+        }
+        else
+        {
+            candidates = new[] { name };
+        }
+
+        return paths.Any(p => candidates.Any(c => File.Exists(Path.Combine(p, c))));
     }
 
     private void AddBrowserHeaders(HttpRequestMessage request, string url)
