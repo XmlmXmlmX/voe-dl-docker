@@ -7,7 +7,10 @@
 
 <MudLayout>
     <MudAppBar Elevation="1" Color="Color.Primary">
-        <MudText Typo="Typo.h6" Class="ml-2">🎬 voe-dl</MudText>
+        <MudText Typo="Typo.h6" Class="ml-2 d-flex align-center gap-1">
+            <MudIcon Icon="@Icons.Material.Filled.Movie" Size="Size.Medium" />
+            <span>voe-dl</span>
+        </MudText>
         <MudText Typo="Typo.caption" Class="ml-2 mt-1" Style="opacity:0.7;">Web Interface</MudText>
     </MudAppBar>
     <MudMainContent>
@@ -18,5 +21,7 @@
 <div id="blazor-error-ui" data-nosnippet>
     Ein Fehler ist aufgetreten.
     <a href="." class="reload">Neu laden</a>
-    <span class="dismiss">🗙</span>
+    <span class="dismiss">
+        <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" />
+    </span>
 </div>
