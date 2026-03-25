@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] - Fix relative DOWNLOAD_PATH in container
+
+### Fixed
+- Changed `ENV DOWNLOAD_PATH=/downloads` to `ENV DOWNLOAD_DIR=/downloads` in the `Dockerfile`.
+  `DOWNLOAD_DIR` takes precedence over `DOWNLOAD_PATH` in the lookup chain, so the container's
+  default download directory is now always `/downloads` even when a user overrides `DOWNLOAD_PATH`
+  with a relative value (e.g. `./mydownloads`).  Relative values for `DOWNLOAD_PATH` were
+  previously resolved against the container's `WORKDIR` (`/app`), causing files to land in
+  `/app/<relative-path>` instead of the expected location.
+
+### Changed
+- Updated `README.md` to recommend `DOWNLOAD_DIR` (instead of `DOWNLOAD_PATH`) for TrueNAS /
+  direct Docker setups, and added a note that both variables must be **absolute paths** when used
+  as container environment variables.
+
+---
+
 ## [v1.7.3] - Documentation Updates
 **Release Date**: 2025-05-28
 

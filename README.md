@@ -53,15 +53,17 @@ docker compose up -d
 
 ### TrueNAS Scale
 
-In TrueNAS Scale's Docker (or Apps) configuration, set the **container path** for the storage mount and then tell the app about it via the `DOWNLOAD_PATH` environment variable:
+In TrueNAS Scale's Docker (or Apps) configuration, set the **container path** for the storage mount and then tell the app about it via the `DOWNLOAD_DIR` environment variable:
 
 1. Add a storage mount in the TrueNAS app UI:
    - **Host path**: your NAS dataset (e.g. `/mnt/pool/dataset/movies`)
    - **Mount path (container path)**: e.g. `/downloads`
-2. Set the environment variable `DOWNLOAD_PATH` to match the container mount path:
+2. Set the environment variable `DOWNLOAD_DIR` to match the container mount path:
    ```
-   DOWNLOAD_PATH=/downloads
+   DOWNLOAD_DIR=/downloads
    ```
+
+> ⚠️ Always use an **absolute path** for `DOWNLOAD_DIR` (and `DOWNLOAD_PATH`) when setting them as container environment variables. Relative paths are resolved inside the container and may not point to the expected location.
 
 The app checks `DOWNLOAD_DIR` first, then `DOWNLOAD_PATH`, so you only need to set one of them.
 
@@ -69,8 +71,8 @@ The app checks `DOWNLOAD_DIR` first, then `DOWNLOAD_PATH`, so you only need to s
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DOWNLOAD_PATH` | `./downloads` | Download directory — used as the **container** path in TrueNAS/direct Docker setups, and as the **host** path for the volume mount in `docker compose` |
-| `DOWNLOAD_DIR` | `/downloads` | Alternative way to set the **container** download path (overrides `DOWNLOAD_PATH` if both are set) |
+| `DOWNLOAD_PATH` | `./downloads` | Host-side path for the volume mount in `docker compose`. Can also be used as the **container** download path in direct Docker / TrueNAS setups — must be an **absolute path** when used this way. |
+| `DOWNLOAD_DIR` | `/downloads` | Container download path (overrides `DOWNLOAD_PATH` when both are set). Always use an absolute path. |
 | `DOWNLOAD_TIMEOUT` | `3600` | Max download time in seconds before a job is cancelled |
 | `CREATE_SUBFOLDER` | `0` | Set to `1` to save each download in its own sub-directory named after the video title |
 | `HOST` | `0.0.0.0` | Flask server listen address |
