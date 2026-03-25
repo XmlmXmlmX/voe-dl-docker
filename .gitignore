@@ -31,3 +31,5 @@ src/**/obj/
 # Exceptions
 !legacy/requirements.txt
 !links.txt
+
+appsettings.Development.json
