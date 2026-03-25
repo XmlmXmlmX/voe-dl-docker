@@ -34,6 +34,9 @@ public sealed class DownloadService
     private static readonly string[] BaitFilenames =
         ["BigBuckBunny", "Big_Buck_Bunny_1080_10s_5MB", "bbb.mp4"];
 
+    private static readonly Regex VideoExtensionRegex =
+        new(@"\.(mp4|mkv|avi|mov|flv|wmv|webm|ts|m4v)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     private static readonly string[] BaitDomains =
         ["test-videos.co.uk", "sample-videos.com", "commondatastorage.googleapis.com"];
 
@@ -715,6 +718,8 @@ public sealed class DownloadService
 
     private static string SanitizeFilename(string name)
     {
+        // Strip common video file extensions that may already be present in page titles.
+        name = VideoExtensionRegex.Replace(name, "");
         name = Regex.Replace(name, @"[\\/*?:""<>|]", "_");
         return name.Replace(" ", "_");
     }
