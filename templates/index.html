@@ -101,7 +101,10 @@
       <div class="card-body pb-2">
         <div class="d-flex justify-content-between align-items-start mb-1">
           <span class="text-truncate me-2" style="max-width:70%;">
-            <a href="{{ job.url }}" target="_blank" rel="noopener" class="text-decoration-none text-body">{{ job.url }}</a>
+            <a href="{{ job.url }}" target="_blank" rel="noopener" class="text-decoration-none text-body">
+              {% if job.title %}{{ job.title }}{% else %}{{ job.url }}{% endif %}
+            </a>
+            {% if job.title %}<br><small class="text-muted font-monospace">{{ job.url }}</small>{% endif %}
           </span>
           <span class="badge rounded-pill
             {% if job.status == 'done' %}bg-success
@@ -203,7 +206,8 @@
         <div class="card-body pb-2">
           <div class="d-flex justify-content-between align-items-start mb-1">
             <span class="text-truncate me-2" style="max-width:70%;">
-              <a href="${escHtml(job.url)}" target="_blank" rel="noopener" class="text-decoration-none text-body">${escHtml(job.url)}</a>
+              <a href="${escHtml(job.url)}" target="_blank" rel="noopener" class="text-decoration-none text-body">${job.title ? escHtml(job.title) : escHtml(job.url)}</a>
+              ${job.title ? `<br><small class="text-muted font-monospace">${escHtml(job.url)}</small>` : ''}
             </span>
             <span class="d-flex align-items-center flex-shrink-0">
               ${statusBadge(job.status)}
