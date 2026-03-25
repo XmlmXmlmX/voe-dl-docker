@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using MudBlazor.Services;
 using VoeDl.Web.Components;
 using VoeDl.Web.Data;
 using VoeDl.Web.Services;
@@ -47,6 +48,7 @@ builder.Services.AddSingleton<DownloadService>();
 builder.Services.AddSingleton<JobManagerService>();
 
 // Add services to the container.
+builder.Services.AddMudServices();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 

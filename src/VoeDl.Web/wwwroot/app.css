@@ -1,12 +1,7 @@
-html, body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    background: #f8f9fa;
-}
-
 /* ---- Job log box ---- */
 .log-box {
-    background: #212529;
-    color: #adb5bd;
+    background: #1e1e1e;
+    color: #d4d4d4;
     font-family: monospace;
     font-size: .8rem;
     white-space: pre-wrap;
@@ -16,10 +11,6 @@ html, body {
     padding: .75rem;
     border-radius: .375rem;
 }
-
-.status-badge { font-size: .75rem; }
-
-.spinner-border-sm { vertical-align: middle; }
 
 /* ---- Blazor error UI ---- */
 #blazor-error-ui {
