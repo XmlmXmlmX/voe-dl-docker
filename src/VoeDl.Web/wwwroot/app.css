@@ -1,0 +1,52 @@
+html, body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background: #f8f9fa;
+}
+
+/* ---- Job log box ---- */
+.log-box {
+    background: #212529;
+    color: #adb5bd;
+    font-family: monospace;
+    font-size: .8rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: .75rem;
+    border-radius: .375rem;
+}
+
+.status-badge { font-size: .75rem; }
+
+.spinner-border-sm { vertical-align: middle; }
+
+/* ---- Blazor error UI ---- */
+#blazor-error-ui {
+    background: lightyellow;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}
+
+.blazor-error-boundary {
+    background: #b32121;
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: white;
+}
+
+.blazor-error-boundary::after {
+    content: "Ein Fehler ist aufgetreten.";
+}

@@ -1,0 +1,238 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@using VoeDl.Web.Models
+@using VoeDl.Web.Services
+@inject JobManagerService JobManager
+@inject IConfiguration Config
+@implements IDisposable
+
+<PageTitle>voe-dl</PageTitle>
+
+<div class="container py-4" style="max-width: 860px;">
+
+    <div class="d-flex align-items-center mb-1">
+        <h1 class="h3 mb-0 me-2">🎬 voe-dl</h1>
+        <span class="text-muted small">Web Interface</span>
+    </div>
+    <p class="text-muted mb-4">
+        Videos von <a href="https://voe.sx" target="_blank" rel="noopener">voe.sx</a> herunterladen
+    </p>
+
+    <!-- Input form -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <EditForm Model="_model" OnValidSubmit="StartDownloads">
+                <div class="mb-3">
+                    <label for="urls" class="form-label fw-semibold">
+                        URL(s) eingeben <span class="text-muted fw-normal">(eine URL pro Zeile)</span>
+                    </label>
+                    <InputTextArea id="urls" class="form-control font-monospace" rows="4"
+                                   @bind-Value="_model.RawUrls"
+                                   placeholder="https://voe.sx/xxxxxxx&#10;https://voe.sx/yyyyyyy" />
+                </div>
+
+                @if (_duplicates.Count > 0)
+                {
+                    <div class="alert alert-warning">
+                        <strong>Bereits heruntergeladen:</strong>
+                        <ul class="mb-2 mt-1">
+                            @foreach (var u in _duplicates)
+                            {
+                                <li class="font-monospace small text-break">@u</li>
+                            }
+                        </ul>
+                        <button type="button" class="btn btn-sm btn-warning me-2"
+                                @onclick="ForceDownload">Erneut herunterladen</button>
+                        <button type="button" class="btn btn-sm btn-secondary"
+                                @onclick="ClearDuplicateWarning">Abbrechen</button>
+                    </div>
+                }
+                else
+                {
+                    <button type="submit" class="btn btn-primary px-4">⬇ Download starten</button>
+                }
+            </EditForm>
+        </div>
+    </div>
+
+    <!-- Download history -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+            <span class="fw-semibold">Heruntergeladene URLs</span>
+            <span class="badge bg-secondary">@_history.Count</span>
+        </div>
+        <div style="max-height:220px; overflow-y:auto;">
+            @if (_history.Count == 0)
+            {
+                <div class="card-body py-2">
+                    <p class="text-muted mb-0 small">Noch keine URLs heruntergeladen.</p>
+                </div>
+            }
+            else
+            {
+                <ul class="list-group list-group-flush">
+                    @foreach (var url in ((IEnumerable<string>)_history).Reverse())
+                    {
+                        <li class="list-group-item text-truncate py-1 px-3">
+                            <a href="@url" target="_blank" rel="noopener"
+                               class="text-decoration-none font-monospace small text-muted">@url</a>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+
+    <!-- Job list -->
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="h5 mb-0">Downloads</h2>
+        <span class="text-muted small">
+            @if (_lastUpdated.HasValue)
+            {
+                <text>Zuletzt aktualisiert: @_lastUpdated.Value.ToLocalTime().ToString("HH:mm:ss")</text>
+            }
+        </span>
+    </div>
+
+    @if (_jobs.Count == 0)
+    {
+        <p class="text-muted">Noch keine Downloads gestartet.</p>
+    }
+    else
+    {
+        @foreach (var job in _jobs)
+        {
+            <div class="card shadow-sm mb-3">
+                <div class="card-body pb-2">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <span class="text-truncate me-2" style="max-width:70%;">
+                            <a href="@job.Url" target="_blank" rel="noopener"
+                               class="text-decoration-none text-body">
+                                @(job.Title ?? job.Url)
+                            </a>
+                            @if (job.Title is not null)
+                            {
+                                <br /><small class="text-muted font-monospace">@job.Url</small>
+                            }
+                        </span>
+                        <span class="d-flex align-items-center flex-shrink-0">
+                            <span class="badge rounded-pill @StatusBadgeClass(job.Status) status-badge">
+                                @if (job.Status == JobStatus.Running)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                @job.Status.ToString().ToLowerInvariant()
+                            </span>
+                            @if (job.Status is JobStatus.Pending or JobStatus.Running)
+                            {
+                                <button class="btn btn-sm btn-outline-danger ms-2"
+                                        @onclick="() => AbortJob(job.Id)">⏹ Abbrechen</button>
+                            }
+                            else if (job.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary ms-2"
+                                        @onclick="() => RequeueJob(job.Id)">🔄 Erneut</button>
+                            }
+                        </span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(job.Logs))
+                    {
+                        <details @key="@($"details-{job.Id}")"
+                                 open="@(job.Status == JobStatus.Running)">
+                            <summary class="text-muted small" style="cursor:pointer;">
+                                @(job.Status == JobStatus.Running ? "Live-Log" : "Log anzeigen")
+                            </summary>
+                            <div class="log-box mt-2">@job.Logs</div>
+                        </details>
+                    }
+                </div>
+            </div>
+        }
+    }
+
+    <footer class="text-center text-muted small mt-4 pt-3 border-top">
+        voe-dl-docker @(Config["APP_VERSION"] ?? "dev")
+    </footer>
+
+</div>
+
+@code {
+    private sealed class DownloadModel
+    {
+        public string RawUrls { get; set; } = string.Empty;
+    }
+
+    private readonly DownloadModel _model = new();
+    private List<DownloadJob> _jobs = [];
+    private List<string> _history = [];
+    private List<string> _duplicates = [];
+    private DateTimeOffset? _lastUpdated;
+
+    protected override async Task OnInitializedAsync()
+    {
+        JobManager.JobsChanged += OnJobsChanged;
+        _jobs = [.. JobManager.GetJobs()];
+        _history = [.. await JobManager.LoadHistoryAsync()];
+    }
+
+    private void OnJobsChanged()
+    {
+        _jobs = [.. JobManager.GetJobs()];
+        _lastUpdated = DateTimeOffset.UtcNow;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task StartDownloads()
+    {
+        var urls = ParseUrls(_model.RawUrls);
+        if (urls.Count == 0) return;
+
+        // Check for duplicates against download history
+        var dupes = urls.Where(_history.Contains).ToList();
+        if (dupes.Count > 0)
+        {
+            _duplicates = dupes;
+            return;
+        }
+
+        EnqueueAll(urls);
+    }
+
+    private void ForceDownload()
+    {
+        var urls = ParseUrls(_model.RawUrls);
+        _duplicates = [];
+        EnqueueAll(urls);
+    }
+
+    private void ClearDuplicateWarning() => _duplicates = [];
+
+    private void EnqueueAll(List<string> urls)
+    {
+        foreach (var url in urls)
+            JobManager.Enqueue(url);
+        _model.RawUrls = string.Empty;
+        _duplicates = [];
+    }
+
+    private void AbortJob(string id) => JobManager.Abort(id);
+
+    private void RequeueJob(string id) => JobManager.Requeue(id);
+
+    private static List<string> ParseUrls(string raw) =>
+        raw.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+           .Select(l => l.Trim())
+           .Where(l => l.Length > 0 && !l.StartsWith('#'))
+           .ToList();
+
+    private static string StatusBadgeClass(JobStatus status) => status switch
+    {
+        JobStatus.Done    => "bg-success",
+        JobStatus.Error   => "bg-danger",
+        JobStatus.Running => "bg-primary",
+        JobStatus.Aborted => "bg-warning text-dark",
+        _                 => "bg-secondary",
+    };
+
+    public void Dispose() => JobManager.JobsChanged -= OnJobsChanged;
+}

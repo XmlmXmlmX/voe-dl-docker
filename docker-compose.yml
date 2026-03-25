@@ -1,6 +1,9 @@
 services:
   voe-dl:
-    build: .
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     ports:
       - "5000:5000"
     volumes:
