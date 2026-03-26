@@ -4,17 +4,12 @@
 @using VoeDl.Web.Services
 @inject JobManagerService JobManager
 @inject IConfiguration Config
+@inject ISnackbar Snackbar
 @implements IDisposable
 
 <PageTitle>voe-dl</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Medium" Class="py-6">
-
-    <MudText Typo="Typo.subtitle1" Class="mb-4" Color="Color.Secondary">
-        Videos von <MudLink Href="https://voe.sx" Target="_blank" rel="noopener">voe.sx</MudLink> herunterladen
-    </MudText>
-
-    <!-- Input form -->
     <MudCard Elevation="2" Class="mb-4">
         <MudCardContent>
             <EditForm Model="_model" OnValidSubmit="StartDownloads">
@@ -139,14 +134,8 @@
                                      Typo="Typo.body1" Color="Color.Default"
                                      Style="word-break:break-all;">
                                 @(job.Title ?? job.Url)
+                                <MudIcon Icon="@Icons.Material.Filled.OpenInNew" />
                             </MudLink>
-                            @if (job.Title is not null)
-                            {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary"
-                                         Style="font-family:monospace; word-break:break-all;">
-                                    @job.Url
-                                </MudText>
-                            }
                         </div>
                         <div class="d-flex align-center flex-shrink-0">
                             @if (job.Status == JobStatus.Running)
@@ -176,6 +165,16 @@
                     </div>
                     @if (!string.IsNullOrWhiteSpace(job.Logs))
                     {
+                        @if (job.Status == JobStatus.Running)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 mb-1">
+                                Aktueller Zustand: @(job.Phase == JobPhase.Preparing ? "Vorbereiten" : "Herunterladen")
+                            </MudText>
+                            <MudProgressLinear Color="Color.Info"
+                                               Class="mb-2"
+                                               Value="@(job.ProgressPercent ?? 0)"
+                                               Indeterminate="@(job.ProgressPercent is null)" />
+                        }
                         <MudExpansionPanels Class="mt-2" Elevation="0">
                             <MudExpansionPanel Text="@(job.Status == JobStatus.Running ? "Live-Log" : "Log anzeigen")"
                                                Expanded="@(job.Status == JobStatus.Running)"
@@ -208,6 +207,7 @@
     private List<DownloadHistoryEntry> _historyEntries = [];
     private List<string> _duplicates = [];
     private DateTimeOffset? _lastUpdated;
+    private readonly HashSet<string> _notifiedTerminalJobs = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -215,12 +215,37 @@
         _jobs = [.. JobManager.GetJobs()];
         _history = [.. await JobManager.LoadHistoryAsync()];
         _historyEntries = [.. await JobManager.LoadHistoryEntriesAsync()];
+
+        foreach (var terminalJob in _jobs.Where(j => j.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted))
+            _notifiedTerminalJobs.Add(terminalJob.Id);
     }
 
     private void OnJobsChanged()
     {
         _jobs = [.. JobManager.GetJobs()];
         _lastUpdated = DateTimeOffset.UtcNow;
+
+        var newlyCompletedJobs = _jobs
+            .Where(j => j.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted && _notifiedTerminalJobs.Add(j.Id))
+            .ToList();
+
+        foreach (var completedJob in newlyCompletedJobs)
+        {
+            var jobLabel = completedJob.Title ?? completedJob.Url;
+            if (completedJob.Status == JobStatus.Done)
+            {
+                Snackbar.Add($"Download abgeschlossen: {jobLabel}", Severity.Success);
+            }
+            else if (completedJob.Status == JobStatus.Error)
+            {
+                Snackbar.Add($"Download fehlgeschlagen: {jobLabel}", Severity.Error);
+            }
+            else if (completedJob.Status == JobStatus.Aborted)
+            {
+                Snackbar.Add($"Download abgebrochen: {jobLabel}", Severity.Warning);
+            }
+        }
+
         // Refresh history in the background when a job finishes
         var recentlyFinished = _jobs.Any(j =>
             j.Status is JobStatus.Done &&

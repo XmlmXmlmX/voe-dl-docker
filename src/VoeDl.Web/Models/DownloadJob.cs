@@ -9,6 +9,12 @@ public enum JobStatus
     Aborted
 }
 
+public enum JobPhase
+{
+    Preparing,
+    Downloading
+}
+
 public sealed class DownloadJob
 {
     public string Id { get; init; } = Guid.NewGuid().ToString();
@@ -20,4 +26,6 @@ public sealed class DownloadJob
     public DateTimeOffset? FinishedAt { get; set; }
     public string Logs { get; set; } = string.Empty;
     public int? ReturnCode { get; set; }
+    public JobPhase Phase { get; set; } = JobPhase.Preparing;
+    public double? ProgressPercent { get; set; }
 }

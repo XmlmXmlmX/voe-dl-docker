@@ -9,6 +9,7 @@ services:
     volumes:
       - ${DOWNLOAD_PATH:-./downloads}:/downloads
     environment:
+      - ASPNETCORE_URLS=http://0.0.0.0:5000
       - DOWNLOAD_DIR=/downloads
       - ConnectionStrings__DefaultConnection=Host=db;Database=voedl;Username=voedl;Password=${POSTGRES_PASSWORD:-voedl_pass}
     depends_on:

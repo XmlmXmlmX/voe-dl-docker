@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using VoeDl.Web.Data;
 using VoeDl.Web.Models;
@@ -12,6 +13,14 @@ namespace VoeDl.Web.Services;
 /// </summary>
 public sealed class JobManagerService
 {
+    private static readonly Regex DownloadedWithTotalRegex = new(
+        @"\[\*\] Downloaded\s+(?<current>[\d\.]+)\s+MB\s+/\s+(?<total>[\d\.]+)\s+MB",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex YtDlpPercentRegex = new(
+        @"\[download\]\s+(?<percent>[\d\.]+)%",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
     private readonly ConcurrentDictionary<string, DownloadJob> _jobs = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellations = new();
 
@@ -165,6 +174,8 @@ public sealed class JobManagerService
         cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
         job.Status = JobStatus.Running;
+        job.Phase = JobPhase.Preparing;
+        job.ProgressPercent = null;
         job.StartedAt = DateTimeOffset.UtcNow;
         NotifyChanged();
 
@@ -176,6 +187,7 @@ public sealed class JobManagerService
                 line =>
                 {
                     job.Logs += line + "\n";
+                    UpdateJobProgressFromLog(job, line);
                     // Extract title from log lines (matching app.py behaviour)
                     if (line.StartsWith("Name of file: "))
                         job.Title = line["Name of file: ".Length..];
@@ -189,6 +201,7 @@ public sealed class JobManagerService
             {
                 job.ReturnCode = exitCode;
                 job.Status = exitCode == 0 ? JobStatus.Done : JobStatus.Error;
+                job.ProgressPercent = exitCode == 0 ? 100 : job.ProgressPercent;
             }
 
             if (exitCode == 0)
@@ -240,6 +253,36 @@ public sealed class JobManagerService
         await _historyLock.WaitAsync();
         try { await File.AppendAllTextAsync(_historyFile, job.Url + "\n"); }
         finally { _historyLock.Release(); }
+    }
+
+    private static void UpdateJobProgressFromLog(DownloadJob job, string line)
+    {
+        if (line.StartsWith("[*] Downloading ", StringComparison.Ordinal))
+        {
+            job.Phase = JobPhase.Downloading;
+            return;
+        }
+
+        var downloadedWithTotalMatch = DownloadedWithTotalRegex.Match(line);
+        if (downloadedWithTotalMatch.Success)
+        {
+            if (double.TryParse(downloadedWithTotalMatch.Groups["current"].Value, out var currentMb)
+                && double.TryParse(downloadedWithTotalMatch.Groups["total"].Value, out var totalMb)
+                && totalMb > 0)
+            {
+                job.Phase = JobPhase.Downloading;
+                job.ProgressPercent = Math.Clamp(currentMb / totalMb * 100.0, 0, 100);
+            }
+            return;
+        }
+
+        var ytDlpPercentMatch = YtDlpPercentRegex.Match(line);
+        if (ytDlpPercentMatch.Success
+            && double.TryParse(ytDlpPercentMatch.Groups["percent"].Value, out var ytPercent))
+        {
+            job.Phase = JobPhase.Downloading;
+            job.ProgressPercent = Math.Clamp(ytPercent, 0, 100);
+        }
     }
 
     private void NotifyChanged() => JobsChanged?.Invoke();
