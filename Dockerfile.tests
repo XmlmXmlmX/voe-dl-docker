@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1
+# ---------------------------------------------------------------------------
+# Dockerfile.tests
+# Builds and runs the VoeDl integration tests inside a container.
+#
+# Usage (from repository root):
+#   docker build -f Dockerfile.tests .
+#   docker run --rm voe-dl-tests
+# ---------------------------------------------------------------------------
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS test
+
+WORKDIR /app
+
+# Copy solution file and all project files first to leverage layer caching
+COPY VoeDl.slnx ./
+COPY src/VoeDl.ServiceDefaults/VoeDl.ServiceDefaults.csproj ./src/VoeDl.ServiceDefaults/
+COPY src/VoeDl.Web/VoeDl.Web.csproj                         ./src/VoeDl.Web/
+COPY src/VoeDl.Tests/VoeDl.Tests.csproj                     ./src/VoeDl.Tests/
+# AppHost is part of the solution but not needed for running tests
+COPY src/VoeDl.AppHost/VoeDl.AppHost.csproj                 ./src/VoeDl.AppHost/
+
+# Restore all NuGet packages
+RUN dotnet restore src/VoeDl.Tests/VoeDl.Tests.csproj
+
+# Copy the remaining source code
+COPY src/ ./src/
+
+# Run the integration tests with detailed console output
+ENTRYPOINT ["dotnet", "test", "src/VoeDl.Tests/VoeDl.Tests.csproj", \
+            "--no-restore", \
+            "--logger", "console;verbosity=detailed"]
