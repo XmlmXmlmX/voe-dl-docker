@@ -7,6 +7,7 @@ WORKDIR /src
 
 # Restore dependencies first (layer-cache friendly)
 COPY src/VoeDl.Web/VoeDl.Web.csproj src/VoeDl.Web/
+COPY src/VoeDl.ServiceDefaults/VoeDl.ServiceDefaults.csproj src/VoeDl.ServiceDefaults/
 RUN dotnet restore src/VoeDl.Web/VoeDl.Web.csproj
 
 # Copy the rest of the source and publish
