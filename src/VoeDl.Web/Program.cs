@@ -78,6 +78,9 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 if (app.Configuration["ASPNETCORE_HTTPS_PORT"] is not null)
     app.UseHttpsRedirection();
 
+// Fallback for environments where endpoint-based static asset mapping is not available.
+app.UseStaticFiles();
+
 app.UseAntiforgery();
 
 app.MapStaticAssets();
