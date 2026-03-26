@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
 using VoeDl.ServiceDefaults;
@@ -8,6 +9,28 @@ using VoeDl.Web.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
+
+// Trust forwarded headers from any upstream proxy (Docker / TrueNAS Scale / Traefik).
+// Without this the app has no knowledge of the public-facing scheme and host, which
+// causes ASP.NET Core's antiforgery validation to reject requests (HTTP 400) because
+// the Origin header set by the browser does not match the container-internal Host.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedProto |
+        ForwardedHeaders.XForwardedHost;
+    // Clear the default IP-whitelist so any upstream proxy is accepted.
+    // This is intentional for Docker deployments: the container is never
+    // directly reachable from the internet; traffic always arrives via the
+    // Docker bridge / host network that is already controlled by the
+    // orchestrator (TrueNAS Scale, Portainer, plain Docker, etc.).
+    // If you expose the container port directly to an untrusted network
+    // without a reverse proxy, remove these two lines and instead add
+    // only the specific trusted proxy IP(s) to KnownIPNetworks.
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // Bind configuration from environment variables (matches docker-compose)
 builder.Configuration.AddEnvironmentVariables();
@@ -67,6 +90,11 @@ if (!string.IsNullOrWhiteSpace(pgConnectionString))
 }
 
 // Configure the HTTP request pipeline.
+// ForwardedHeaders must be applied first so that all subsequent middleware
+// (including exception handler, HSTS, HTTPS redirect, antiforgery) sees the
+// real scheme/host that the end user's browser used.
+app.UseForwardedHeaders();
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
