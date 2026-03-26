@@ -26,11 +26,30 @@ All notable changes to this project will be documented in this file.
   with a relative value (e.g. `./mydownloads`).  Relative values for `DOWNLOAD_PATH` were
   previously resolved against the container's `WORKDIR` (`/app`), causing files to land in
   `/app/<relative-path>` instead of the expected location.
+- **HSTS sent over plain HTTP** in Docker / TrueNAS Scale deployments.  
+  `app.UseHsts()` was previously called for every non-development environment.  Sending
+  `Strict-Transport-Security` over HTTP causes browsers to cache the HSTS policy and
+  subsequently refuse plain-HTTP connections, breaking HTTP-only deployments entirely.  
+  HSTS is now only enabled when `ASPNETCORE_HTTPS_PORT` or `ASPNETCORE_HTTPS_PORTS` is
+  set, i.e. when an HTTPS endpoint is actually configured.
+- **Port mismatch between Dockerfile and container runtime.**  
+  The `mcr.microsoft.com/dotnet/aspnet:10.0` base image sets `ASPNETCORE_HTTP_PORTS=8080`,
+  so the app always listened on port **8080** unless overridden.  The Dockerfile previously
+  declared `EXPOSE 5000`, causing confusion for users (including TrueNAS Scale App setups)
+  who looked at the exposed port to decide which host port to map.  The exposed port is
+  now **8080** to match the actual listening port.
 
 ### Changed
+- `EXPOSE` in `Dockerfile` changed from `5000` to `8080` to match the `ASPNETCORE_HTTP_PORTS=8080`
+  default set by the `.NET aspnet` base image.
+- `docker-compose.yml` port mapping updated from `5000:5000` to `8080:8080`.  The
+  `ASPNETCORE_URLS=http://0.0.0.0:5000` override has been removed — the compose stack now
+  uses the same port (`8080`) as a standalone container, making both deployment paths
+  consistent.
 - Updated `README.md` to recommend `DOWNLOAD_DIR` (instead of `DOWNLOAD_PATH`) for TrueNAS /
   direct Docker setups, and added a note that both variables must be **absolute paths** when used
   as container environment variables.
+- Updated `README.md` Quick Start URL from `http://localhost:5000` to `http://localhost:8080`.
 
 ---
 

@@ -99,12 +99,18 @@ app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    app.UseHsts();
+    // Only send HSTS headers when HTTPS is actually configured.
+    // Sending Strict-Transport-Security over plain HTTP causes browsers to cache
+    // the policy and refuse future HTTP connections (breaking HTTP-only Docker
+    // deployments such as TrueNAS Scale Apps).
+    if (!string.IsNullOrEmpty(app.Configuration["ASPNETCORE_HTTPS_PORT"]) ||
+        !string.IsNullOrEmpty(app.Configuration["ASPNETCORE_HTTPS_PORTS"]))
+        app.UseHsts();
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 
 // HTTPS redirect is disabled by default in Docker; enable it only when a certificate is configured.
-if (app.Configuration["ASPNETCORE_HTTPS_PORT"] is not null)
+if (!string.IsNullOrEmpty(app.Configuration["ASPNETCORE_HTTPS_PORT"]))
     app.UseHttpsRedirection();
 
 // Fallback for environments where endpoint-based static asset mapping is not available.
