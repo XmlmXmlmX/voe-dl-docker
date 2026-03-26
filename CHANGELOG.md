@@ -4,9 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [Unreleased] - Fix relative DOWNLOAD_PATH in container
+## [Unreleased] - Fix HTTP 400 and blazor.web.js 404 in Docker / TrueNAS Scale
 
 ### Fixed
+- **HTTP 400 on button clicks** when the container is deployed behind a reverse proxy
+  (e.g. TrueNAS Scale, Traefik).  
+  Added `ForwardedHeaders` middleware configuration in `Program.cs` so that
+  ASP.NET Core's antiforgery validation uses the real public-facing scheme and host
+  reported by the proxy rather than the container-internal values.  The middleware is
+  now applied as the very first step in the request pipeline, before the exception
+  handler, HSTS and antiforgery checks.
+- **`_framework/blazor.web.js` 404** in .NET 10 deployments.  
+  Removed the `@Assets[…]` fingerprinting wrapper from the framework script tag in
+  `App.razor`.  Using `@Assets` for this file triggers a manifest lookup that can
+  fail in .NET 10 (see [dotnet/aspnetcore#63962](https://github.com/dotnet/aspnetcore/issues/63962));
+  the Blazor runtime registers its own dedicated endpoint for `_framework/blazor.web.js`
+  so a direct path reference is both correct and sufficient.
 - Changed `ENV DOWNLOAD_PATH=/downloads` to `ENV DOWNLOAD_DIR=/downloads` in the `Dockerfile`.
   `DOWNLOAD_DIR` takes precedence over `DOWNLOAD_PATH` in the lookup chain, so the container's
   default download directory is now always `/downloads` even when a user overrides `DOWNLOAD_PATH`
