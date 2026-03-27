@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/VoeDl.AppHost/VoeDl.AppHost.csproj" />
     <Project Path="src/VoeDl.ServiceDefaults/VoeDl.ServiceDefaults.csproj" />
+    <Project Path="src/VoeDl.Tests/VoeDl.Tests.csproj" />
     <Project Path="src/VoeDl.Web/VoeDl.Web.csproj" />
   </Folder>
 </Solution>

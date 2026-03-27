@@ -42,7 +42,7 @@ docker compose up -d
 ```
 
 Downloads are saved to `./downloads` on the host by default.
-Access the web UI at `http://localhost:5000`.
+Access the web UI at `http://localhost:8080`.
 
 ### Custom Output Path
 

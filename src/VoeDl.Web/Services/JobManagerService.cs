@@ -11,7 +11,7 @@ namespace VoeDl.Web.Services;
 /// the original app.py (queued → running → done/error/aborted).
 /// Thread-safe for concurrent Blazor component access.
 /// </summary>
-public sealed class JobManagerService
+public sealed class JobManagerService : IJobManagerService
 {
     private static readonly Regex DownloadedWithTotalRegex = new(
         @"\[\*\] Downloaded\s+(?<current>[\d\.]+)\s+MB\s+/\s+(?<total>[\d\.]+)\s+MB",

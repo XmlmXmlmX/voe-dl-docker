@@ -4,20 +4,52 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [Unreleased] - Fix relative DOWNLOAD_PATH in container
+## [Unreleased] - Fix HTTP 400 and blazor.web.js 404 in Docker / TrueNAS Scale
 
 ### Fixed
+- **HTTP 400 on button clicks** when the container is deployed behind a reverse proxy
+  (e.g. TrueNAS Scale, Traefik).  
+  Added `ForwardedHeaders` middleware configuration in `Program.cs` so that
+  ASP.NET Core's antiforgery validation uses the real public-facing scheme and host
+  reported by the proxy rather than the container-internal values.  The middleware is
+  now applied as the very first step in the request pipeline, before the exception
+  handler, HSTS and antiforgery checks.
+- **`_framework/blazor.web.js` 404** in .NET 10 deployments.  
+  Removed the `@Assets[…]` fingerprinting wrapper from the framework script tag in
+  `App.razor`.  Using `@Assets` for this file triggers a manifest lookup that can
+  fail in .NET 10 (see [dotnet/aspnetcore#63962](https://github.com/dotnet/aspnetcore/issues/63962));
+  the Blazor runtime registers its own dedicated endpoint for `_framework/blazor.web.js`
+  so a direct path reference is both correct and sufficient.
 - Changed `ENV DOWNLOAD_PATH=/downloads` to `ENV DOWNLOAD_DIR=/downloads` in the `Dockerfile`.
   `DOWNLOAD_DIR` takes precedence over `DOWNLOAD_PATH` in the lookup chain, so the container's
   default download directory is now always `/downloads` even when a user overrides `DOWNLOAD_PATH`
   with a relative value (e.g. `./mydownloads`).  Relative values for `DOWNLOAD_PATH` were
   previously resolved against the container's `WORKDIR` (`/app`), causing files to land in
   `/app/<relative-path>` instead of the expected location.
+- **HSTS sent over plain HTTP** in Docker / TrueNAS Scale deployments.  
+  `app.UseHsts()` was previously called for every non-development environment.  Sending
+  `Strict-Transport-Security` over HTTP causes browsers to cache the HSTS policy and
+  subsequently refuse plain-HTTP connections, breaking HTTP-only deployments entirely.  
+  HSTS is now only enabled when `ASPNETCORE_HTTPS_PORT` or `ASPNETCORE_HTTPS_PORTS` is
+  set, i.e. when an HTTPS endpoint is actually configured.
+- **Port mismatch between Dockerfile and container runtime.**  
+  The `mcr.microsoft.com/dotnet/aspnet:10.0` base image sets `ASPNETCORE_HTTP_PORTS=8080`,
+  so the app always listened on port **8080** unless overridden.  The Dockerfile previously
+  declared `EXPOSE 5000`, causing confusion for users (including TrueNAS Scale App setups)
+  who looked at the exposed port to decide which host port to map.  The exposed port is
+  now **8080** to match the actual listening port.
 
 ### Changed
+- `EXPOSE` in `Dockerfile` changed from `5000` to `8080` to match the `ASPNETCORE_HTTP_PORTS=8080`
+  default set by the `.NET aspnet` base image.
+- `docker-compose.yml` port mapping updated from `5000:5000` to `8080:8080`.  The
+  `ASPNETCORE_URLS=http://0.0.0.0:5000` override has been removed — the compose stack now
+  uses the same port (`8080`) as a standalone container, making both deployment paths
+  consistent.
 - Updated `README.md` to recommend `DOWNLOAD_DIR` (instead of `DOWNLOAD_PATH`) for TrueNAS /
   direct Docker setups, and added a note that both variables must be **absolute paths** when used
   as container environment variables.
+- Updated `README.md` Quick Start URL from `http://localhost:5000` to `http://localhost:8080`.
 
 ---
 
