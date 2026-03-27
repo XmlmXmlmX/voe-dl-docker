@@ -92,6 +92,29 @@ To avoid antiforgery/session errors after app restarts, also persist ASP.NET Dat
 
 If keys are not persisted, existing browser antiforgery cookies can no longer be decrypted after container recreation/redeploy.
 
+### Logging Configuration
+
+> Helpful for troubleshooting issues like "download button does nothing"
+
+In TrueNAS Scale's app UI, add this **Environment Variable** to enable debug logging:
+
+```
+Logging__LogLevel__Default=Debug
+```
+
+Log levels (least to most verbose):
+- `Warning` – only problems and errors
+- `Information` (default) – normal operations + warnings
+- `Debug` – detailed component state and URL resolution
+
+**Example**: To debug only VoeDl.Web components:
+```
+Logging__LogLevel__VoeDl.Web=Debug
+Logging__LogLevel__Microsoft.AspNetCore=Warning
+```
+
+Once set, **restart the app** and check the container logs in TrueNAS.
+
 ### Environment Variables
 
 | Variable | Default | Description |
@@ -105,6 +128,8 @@ If keys are not persisted, existing browser antiforgery cookies can no longer be
 | `APP_VERSION` | `dev` | Application version label shown in the footer |
 | `DATAPROTECTION_PATH` | `./dataprotection` | Host-side path for persisting ASP.NET Core Data Protection keys in `docker compose`. |
 | `DataProtection__KeysPath` | `/var/lib/voedl/dataprotection` | Container path used by ASP.NET Core for Data Protection key storage. Must point to persistent storage in Docker/TrueNAS. |
+| `Logging__LogLevel__Default` | `Information` | Set to `Debug` on TrueNAS to see detailed troubleshooting logs. |
+| `Logging__LogLevel__Microsoft.AspNetCore` | `Warning` | ASP.NET framework logging level. Set to `Information` or `Debug` only when debugging. |
 
 ---
 

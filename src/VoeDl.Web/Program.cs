@@ -99,10 +99,18 @@ var app = builder.Build();
 // Apply database schema if PostgreSQL is configured
 if (!string.IsNullOrWhiteSpace(pgConnectionString))
 {
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
-    await using var ctx = await db.CreateDbContextAsync();
-    await ctx.Database.MigrateAsync();
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
+        await using var ctx = await db.CreateDbContextAsync();
+        await ctx.Database.MigrateAsync();
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Failed to apply database migrations. The app will fall back to file-based history storage. Ensure PostgreSQL is accessible and configured correctly.");
+    }
 }
 
 // Configure the HTTP request pipeline.
@@ -138,5 +146,12 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.MapDefaultEndpoints();
+
+// Log startup diagnostics
+var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+startupLogger.LogInformation("=== VoeDl Application Startup ===");
+startupLogger.LogInformation("Database connection configured: {DbConfigured}", !string.IsNullOrWhiteSpace(pgConnectionString));
+startupLogger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);
+startupLogger.LogInformation("Application started successfully. Listening on http://[::]:8080");
 
 app.Run();

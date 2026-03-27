@@ -3,9 +3,11 @@
 @using VoeDl.Web.Models
 @using VoeDl.Web.Services
 @using VoeDl.Web.Components.Pages.HomeComponents
+@using Microsoft.Extensions.Logging
 @inject IJobManagerService JobManager
 @inject IConfiguration Config
 @inject ISnackbar Snackbar
+@inject ILogger<Home> Logger
 @implements IDisposable
 
 <PageTitle>voe-dl</PageTitle>
@@ -76,13 +78,27 @@
 
     protected override async Task OnInitializedAsync()
     {
-        JobManager.JobsChanged += OnJobsChanged;
-        _jobs = [.. JobManager.GetJobs()];
-        _history = [.. await JobManager.LoadHistoryAsync()];
-        _historyEntries = [.. await JobManager.LoadHistoryEntriesAsync()];
+        try
+        {
+            JobManager.JobsChanged += OnJobsChanged;
+            _jobs = [.. JobManager.GetJobs()];
+            Logger.LogInformation("Loaded {JobCount} existing download jobs", _jobs.Count);
 
-        foreach (var terminalJob in _jobs.Where(j => j.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted))
-            _notifiedTerminalJobs.Add(terminalJob.Id);
+            _history = [.. await JobManager.LoadHistoryAsync()];
+            Logger.LogInformation("Loaded {HistoryCount} URLs from download history", _history.Count);
+
+            _historyEntries = [.. await JobManager.LoadHistoryEntriesAsync()];
+            Logger.LogInformation("Loaded {HistoryEntriesCount} history entries from database", _historyEntries.Count);
+
+            foreach (var terminalJob in _jobs.Where(j => j.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted))
+                _notifiedTerminalJobs.Add(terminalJob.Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during Home component initialization: {ErrorMessage}", ex.Message);
+            Snackbar.Add($"Fehler beim Laden der Download-Historie: {ex.Message}", Severity.Error);
+            // Component still renders but with empty history - download button is still available
+        }
     }
 
     private void OnJobsChanged()
@@ -136,24 +152,41 @@
         var inputUrls = ParseUrls(_model.RawUrls);
         if (inputUrls.Count == 0) return;
 
-        var urls = await ResolveUrlsAsync(inputUrls);
-        if (urls.Count == 0) return;
-
-        _resolvedUrlsAwaitingConfirmation = urls;
-
-        // Check for duplicates against download history
-        var dupes = urls.Where(_history.Contains).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        if (dupes.Count > 0)
+        try
         {
-            _duplicates = dupes;
-            _deltaUrlsAwaitingConfirmation = urls
-                .Except(dupes, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            return;
-        }
+            var urls = await ResolveUrlsAsync(inputUrls);
+            if (urls.Count == 0)
+            {
+                Snackbar.Add("Keine gültigen URLs gefunden.", Severity.Error);
+                Logger.LogWarning("No valid URLs resolved from input");
+                return;
+            }
 
-        _deltaUrlsAwaitingConfirmation = [];
-        EnqueueAll(urls);
+            _resolvedUrlsAwaitingConfirmation = urls;
+            Logger.LogInformation("Resolved {UrlCount} URLs for download", urls.Count);
+
+            // Check for duplicates against download history
+            var dupes = urls.Where(_history.Contains).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (dupes.Count > 0)
+            {
+                _duplicates = dupes;
+                _deltaUrlsAwaitingConfirmation = urls
+                    .Except(dupes, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                Logger.LogInformation("Found {DuplicateCount} duplicate URLs out of {Total}", dupes.Count, urls.Count);
+                return;
+            }
+
+            _deltaUrlsAwaitingConfirmation = [];
+            EnqueueAll(urls);
+            Snackbar.Add($"{urls.Count} Download(s) gestartet.", Severity.Success);
+            Logger.LogInformation("Enqueued {UrlCount} downloads", urls.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during StartDownloads: {ErrorMessage}", ex.Message);
+            Snackbar.Add($"Fehler beim Starten der Downloads: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task ForceDownload()
@@ -228,9 +261,11 @@
             {
                 var expanded = await JobManager.ResolveInputUrlsAsync(inputUrl);
                 resolved.AddRange(expanded);
+                Logger.LogInformation("Resolved URL '{InputUrl}' to {ExpandedCount} URLs", inputUrl, expanded.Count);
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.LogWarning(ex, "Failed to resolve URL '{InputUrl}', adding original URL as fallback. Error: {ErrorMessage}", inputUrl, ex.Message);
                 // If expansion fails, keep the original input URL so the user can still download directly.
                 resolved.Add(inputUrl);
             }

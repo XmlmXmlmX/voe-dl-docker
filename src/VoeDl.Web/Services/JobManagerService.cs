@@ -56,6 +56,9 @@ public sealed class JobManagerService : IJobManagerService
         _maxConcurrentDownloads = ParseMaxConcurrentDownloads(configuration);
         _downloadSlots = new SemaphoreSlim(_maxConcurrentDownloads, _maxConcurrentDownloads);
         _logger.LogInformation("Max concurrent downloads configured to {MaxConcurrentDownloads}", _maxConcurrentDownloads);
+        _logger.LogInformation("Database factory available: {DbFactoryAvailable}", _dbFactory is not null);
+        if (_dbFactory is null)
+            _logger.LogWarning("PostgreSQL not configured. Download history will be stored in {HistoryFile}", Path.Combine(rawDir, "downloaded_urls.txt"));
 
         _downloadDir = Path.IsPathRooted(rawDir) ? rawDir : Path.GetFullPath(rawDir);
         Directory.CreateDirectory(_downloadDir);
@@ -80,8 +83,7 @@ public sealed class JobManagerService : IJobManagerService
     public DownloadJob Enqueue(string url)
     {
         var job = new DownloadJob { Url = url };
-        _jobs[job.Id] = job;
-        NotifyChanged();
+        _jobs[job.Id] = job;        _logger.LogInformation("Enqueued download job {JobId} for URL {Url}", job.Id, url);        NotifyChanged();
 
         _ = Task.Run(() => RunJobAsync(job));
         return job;
@@ -140,11 +142,18 @@ public sealed class JobManagerService : IJobManagerService
     {
         if (_dbFactory is not null)
         {
-            await using var db = await _dbFactory.CreateDbContextAsync();
-            return await db.DownloadHistory
-                .OrderBy(e => e.FinishedAt)
-                .Select(e => e.Url)
-                .ToListAsync();
+            try
+            {
+                await using var db = await _dbFactory.CreateDbContextAsync();
+                return await db.DownloadHistory
+                    .OrderBy(e => e.FinishedAt)
+                    .Select(e => e.Url)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to load history from PostgreSQL database, falling back to file-based history");
+            }
         }
 
         var urls = new List<string>();
@@ -159,21 +168,38 @@ public sealed class JobManagerService : IJobManagerService
                     urls.Add(trimmed);
             }
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load history from file {HistoryFile}", _historyFile);
+        }
         finally { _historyLock.Release(); }
         return urls;
     }
 
     /// <summary>
     /// Returns full history entries ordered newest-first.
-    /// Only available when PostgreSQL is configured; returns an empty list otherwise.
+    /// Only available when PostgreSQL is configured and accessible; returns an empty list otherwise.
     /// </summary>
     public async Task<IReadOnlyList<DownloadHistoryEntry>> LoadHistoryEntriesAsync()
     {
-        if (_dbFactory is null) return [];
-        await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.DownloadHistory
-            .OrderByDescending(e => e.FinishedAt)
-            .ToListAsync();
+        if (_dbFactory is null)
+        {
+            _logger.LogDebug("PostgreSQL not configured, returning empty history entries");
+            return [];
+        }
+
+        try
+        {
+            await using var db = await _dbFactory.CreateDbContextAsync();
+            return await db.DownloadHistory
+                .OrderByDescending(e => e.FinishedAt)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load history entries from PostgreSQL database, returning empty list");
+            return [];
+        }
     }
 
     // ------------------------------------------------------------------
