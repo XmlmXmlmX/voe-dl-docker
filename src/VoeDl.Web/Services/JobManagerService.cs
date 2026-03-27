@@ -52,17 +52,26 @@ public sealed class JobManagerService : IJobManagerService
                        ?? Environment.GetEnvironmentVariable("DOWNLOAD_DIR")
                        ?? Environment.GetEnvironmentVariable("DOWNLOAD_PATH")
                        ?? "/downloads";
+        
+        _logger.LogInformation("Download directory resolution (first match wins):");
+        _logger.LogInformation("  Config[DOWNLOAD_DIR] = {ConfigDownloadDir}", configuration["DOWNLOAD_DIR"] ?? "(null)");
+        _logger.LogInformation("  Config[DOWNLOAD_PATH] = {ConfigDownloadPath}", configuration["DOWNLOAD_PATH"] ?? "(null)");
+        _logger.LogInformation("  Env[DOWNLOAD_DIR] = {EnvDownloadDir}", Environment.GetEnvironmentVariable("DOWNLOAD_DIR") ?? "(null)");
+        _logger.LogInformation("  Env[DOWNLOAD_PATH] = {EnvDownloadPath}", Environment.GetEnvironmentVariable("DOWNLOAD_PATH") ?? "(null)");
+        _logger.LogInformation("  => Using: {ResolvedDir}", rawDir);
 
         _maxConcurrentDownloads = ParseMaxConcurrentDownloads(configuration);
         _downloadSlots = new SemaphoreSlim(_maxConcurrentDownloads, _maxConcurrentDownloads);
         _logger.LogInformation("Max concurrent downloads configured to {MaxConcurrentDownloads}", _maxConcurrentDownloads);
         _logger.LogInformation("Database factory available: {DbFactoryAvailable}", _dbFactory is not null);
         if (_dbFactory is null)
-            _logger.LogWarning("PostgreSQL not configured. Download history will be stored in {HistoryFile}", Path.Combine(rawDir, "downloaded_urls.txt"));
+            _logger.LogWarning("PostgreSQL not configured. Download history will be stored in file.");
 
         _downloadDir = Path.IsPathRooted(rawDir) ? rawDir : Path.GetFullPath(rawDir);
+        _logger.LogInformation("Final download directory (absolute path): {FinalDownloadDir}", _downloadDir);
         Directory.CreateDirectory(_downloadDir);
         _historyFile = Path.Combine(_downloadDir, "downloaded_urls.txt");
+        _logger.LogInformation("Download history file: {HistoryFile}", _historyFile);
     }
 
     // ------------------------------------------------------------------

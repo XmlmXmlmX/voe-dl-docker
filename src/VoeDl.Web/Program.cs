@@ -89,6 +89,19 @@ if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
     dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
 }
 
+// Antiforgery cookie configuration:
+// - IsEssential = false: don't block if cookie consent middleware is present
+// - SameSite = Strict: no cross-site requests
+// - MaxAge = 1h: short lifetime so stale cookies (from a container restart with
+//   different Data Protection keys) expire quickly and don't keep the Blazor circuit
+//   from connecting (the symptom is: buttons do nothing, blazor.web.js errors in console).
+//   Without MaxAge, browsers with session-restore keep the cookie alive indefinitely.
+builder.Services.AddAntiforgery(options =>
+{
+    options.Cookie.MaxAge = TimeSpan.FromHours(1);
+    options.Cookie.SameSite = SameSiteMode.Strict;
+});
+
 // Add services to the container.
 builder.Services.AddMudServices();
 builder.Services.AddRazorComponents()
@@ -152,6 +165,19 @@ var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
 startupLogger.LogInformation("=== VoeDl Application Startup ===");
 startupLogger.LogInformation("Database connection configured: {DbConfigured}", !string.IsNullOrWhiteSpace(pgConnectionString));
 startupLogger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);
+
+// Diagnose environment variable configuration for troubleshooting
+startupLogger.LogInformation("--- Environment Variable Diagnostics ---");
+var downloadDir = app.Configuration["DOWNLOAD_DIR"] ?? "(not set)";
+var downloadPath = app.Configuration["DOWNLOAD_PATH"] ?? "(not set)";
+var dataProtectionPath = app.Configuration["DataProtection:KeysPath"] ?? "(not set)";
+startupLogger.LogInformation("DOWNLOAD_DIR env: {DownloadDir}", downloadDir);
+startupLogger.LogInformation("DOWNLOAD_PATH env: {DownloadPath}", downloadPath);
+startupLogger.LogInformation("DataProtection:KeysPath env: {DataProtectionPath}", dataProtectionPath);
+startupLogger.LogInformation("ConnectionStrings:DefaultConnection: {DbConnectionString}", 
+    string.IsNullOrWhiteSpace(pgConnectionString) ? "(not set)" : "(configured)");
+startupLogger.LogInformation("--- End Diagnostics ---");
+
 startupLogger.LogInformation("Application started successfully. Listening on http://[::]:8080");
 
 app.Run();

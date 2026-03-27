@@ -115,6 +115,35 @@ Logging__LogLevel__Microsoft.AspNetCore=Warning
 
 Once set, **restart the app** and check the container logs in TrueNAS.
 
+### Troubleshooting on TrueNAS
+
+#### "Database connection configured: False" or "DOWNLOAD_DIR not set"
+
+If the logs show that environment variables are not being read, you need to **explicitly set them** in TrueNAS:
+
+1. **Open the App Configuration** in TrueNAS Scale → edit your voe-dl app
+2. **Go to Environment Variables** section
+3. **Add these variables** (update paths to match your setup):
+   ```
+   DOWNLOAD_DIR=/downloads
+   DataProtection__KeysPath=/var/lib/voedl/dataprotection
+   ConnectionStrings__DefaultConnection=Host=db;Database=voedl;Username=voedl;Password=<your-password>
+   ```
+4. **Add the storage mounts** to match the paths above
+5. **Restart the app**
+6. **Check logs again** – should now show the resolved paths
+
+**Note**: The `docker-compose.yml` defaults only apply when using `docker compose up`. In TrueNAS, you must set all variables explicitly.
+
+#### "Antiforgery token could not be decrypted" after restart
+
+Make sure you've added the **DataProtection volume mount**:
+- Host path: `/mnt/pool/appdata/voedl-dataprotection` (or your chosen location)
+- Container path: `/var/lib/voedl/dataprotection`
+- Set env: `DataProtection__KeysPath=/var/lib/voedl/dataprotection`
+
+Without this, encryption keys are lost on container restart and old tokens can't be decrypted.
+
 ### Environment Variables
 
 | Variable | Default | Description |
