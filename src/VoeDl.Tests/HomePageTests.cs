@@ -28,6 +28,13 @@ public sealed class HomePageTests : TestContext
             .Returns(Task.FromResult<IReadOnlyList<string>>([]));
         _jobManager.LoadHistoryEntriesAsync()
             .Returns(Task.FromResult<IReadOnlyList<DownloadHistoryEntry>>([]));
+        _jobManager.ResolveInputUrlsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                string input = callInfo.ArgAt<string>(0);
+                IReadOnlyList<string> resolved = [input];
+                return Task.FromResult(resolved);
+            });
 
         Services.AddSingleton(_jobManager);
         Services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
@@ -48,9 +55,10 @@ public sealed class HomePageTests : TestContext
         var textarea = cut.Find("textarea");
         await textarea.ChangeAsync(new() { Value = testUrl });
 
-        // Act: click the "Download starten" (start download) submit button
-        var submitButton = cut.Find("button[type='submit']");
-        await submitButton.ClickAsync(new());
+        // Act: click the "Download starten" button
+        var downloadButton = cut.FindAll("button")
+            .First(b => b.TextContent.Contains(DownloadButtonText, StringComparison.OrdinalIgnoreCase));
+        await downloadButton.ClickAsync(new());
 
         // Assert: the URL must have been passed to the job manager exactly once
         _jobManager.Received(1).Enqueue(testUrl);
@@ -62,9 +70,10 @@ public sealed class HomePageTests : TestContext
         // Arrange
         var cut = RenderComponent<Home>();
 
-        // Act: click submit without entering any URL
-        var submitButton = cut.Find("button[type='submit']");
-        await submitButton.ClickAsync(new());
+        // Act: click download without entering any URL
+        var downloadButton = cut.FindAll("button")
+            .First(b => b.TextContent.Contains(DownloadButtonText, StringComparison.OrdinalIgnoreCase));
+        await downloadButton.ClickAsync(new());
 
         // Assert: no job must be enqueued
         _jobManager.DidNotReceive().Enqueue(Arg.Any<string>());
@@ -76,9 +85,9 @@ public sealed class HomePageTests : TestContext
         // Arrange & Act
         var cut = RenderComponent<Home>();
 
-        // Assert: the submit button with the expected label is present
-        var submitButton = cut.Find("button[type='submit']");
-        Assert.NotNull(submitButton);
-        Assert.Contains(DownloadButtonText, submitButton.TextContent, StringComparison.OrdinalIgnoreCase);
+        // Assert: the button with the expected label is present
+        var downloadButton = cut.FindAll("button")
+            .FirstOrDefault(b => b.TextContent.Contains(DownloadButtonText, StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(downloadButton);
     }
 }

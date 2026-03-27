@@ -20,6 +20,11 @@ public interface IJobManagerService
     /// <summary>Enqueues a new download job for <paramref name="url"/>.</summary>
     DownloadJob Enqueue(string url);
 
+    /// <summary>
+    /// Resolves a user input URL to one or many concrete download URLs.
+    /// </summary>
+    Task<IReadOnlyList<string>> ResolveInputUrlsAsync(string inputUrl, CancellationToken cancellationToken = default);
+
     /// <summary>Requests cancellation of a running or pending job.</summary>
     bool Abort(string id);
 
