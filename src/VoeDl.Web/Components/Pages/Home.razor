@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @using VoeDl.Web.Models
 @using VoeDl.Web.Services
+@using VoeDl.Web.Components.Pages.HomeComponents
 @inject JobManagerService JobManager
 @inject IConfiguration Config
 @inject ISnackbar Snackbar
@@ -10,102 +11,18 @@
 <PageTitle>voe-dl</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Medium" Class="py-6">
-    <MudCard Elevation="2" Class="mb-4">
-        <MudCardContent>
-            <EditForm Model="_model" OnValidSubmit="StartDownloads">
-                <MudTextField @bind-Value="_model.RawUrls"
-                              Label="URL(s) eingeben"
-                              HelperText="Eine URL pro Zeile"
-                              Lines="4"
-                              Variant="Variant.Outlined"
-                              Class="mb-2"
-                              Placeholder="https://voe.sx/xxxxxxx&#10;https://voe.sx/yyyyyyy"
-                              Style="font-family: monospace;" />
+    <DownloadInputCard
+        RawUrls="@_model.RawUrls"
+        RawUrlsChanged="OnRawUrlsChanged"
+        Duplicates="@_duplicates"
+        OnStartDownloads="StartDownloads"
+        OnForceDownload="ForceDownload"
+        OnDownloadDelta="DownloadDelta"
+        OnClearDuplicateWarning="ClearDuplicateWarning" />
 
-                @if (_duplicates.Count > 0)
-                {
-                    <MudAlert Severity="Severity.Warning" Class="mb-3" Variant="Variant.Outlined">
-                        <MudText Typo="Typo.body2" Class="mb-1"><strong>Bereits heruntergeladen:</strong></MudText>
-                        @foreach (var u in _duplicates)
-                        {
-                            <MudText Typo="Typo.caption" Style="font-family:monospace; word-break:break-all;">@u</MudText>
-                        }
-                        <div class="mt-2">
-                            <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small"
-                                       Class="mr-2" OnClick="ForceDownload">Erneut herunterladen</MudButton>
-                            <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
-                                       OnClick="ClearDuplicateWarning">Abbrechen</MudButton>
-                        </div>
-                    </MudAlert>
-                }
-                else
-                {
-                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled"
-                               Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download">
-                        Download starten
-                    </MudButton>
-                }
-            </EditForm>
-        </MudCardContent>
-    </MudCard>
-
-    <!-- Download history -->
-    <MudCard Elevation="2" Class="mb-4">
-        <MudCardHeader>
-            <CardHeaderContent>
-                <MudText Typo="Typo.h6">Heruntergeladene URLs</MudText>
-            </CardHeaderContent>
-            <CardHeaderActions>
-                <MudChip T="string" Color="Color.Default" Size="Size.Small">@_history.Count</MudChip>
-            </CardHeaderActions>
-        </MudCardHeader>
-        <MudCardContent Class="pa-0">
-            @if (_history.Count == 0)
-            {
-                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-4">
-                    Noch keine URLs heruntergeladen.
-                </MudText>
-            }
-            else if (_historyEntries.Count > 0)
-            {
-                <ul class="list-group list-group-flush">
-                    @foreach (var entry in _historyEntries)
-                    {
-                        <li class="list-group-item py-1 px-3">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <a href="@entry.Url" target="_blank" rel="noopener"
-                                   class="text-decoration-none font-monospace small text-muted text-truncate me-2"
-                                   style="max-width:70%;">
-                                    @(entry.Title ?? entry.Url)
-                                </a>
-                                <span class="text-muted small flex-shrink-0">
-                                    @entry.FinishedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
-                                </span>
-                            </div>
-                            @if (entry.Title is not null)
-                            {
-                                <small class="text-muted font-monospace" style="font-size:.7rem;">@entry.Url</small>
-                            }
-                        </li>
-                    }
-                </ul>
-            }
-            else
-            {
-                <MudList T="string" Dense="true" Style="max-height:220px; overflow-y:auto;">
-                    @foreach (var url in ((IEnumerable<string>)_history).Reverse())
-                    {
-                        <MudListItem T="string">
-                            <MudLink Href="@url" Target="_blank" rel="noopener"
-                                     Typo="Typo.caption" Style="font-family:monospace; word-break:break-all;">
-                                @url
-                            </MudLink>
-                        </MudListItem>
-                    }
-                </MudList>
-            }
-        </MudCardContent>
-    </MudCard>
+    <DownloadHistoryCard
+        History="@_history"
+        HistoryEntries="@_historyEntries" />
 
     <!-- Job list header -->
     <div class="d-flex justify-space-between align-center mb-3">
@@ -126,65 +43,11 @@
     {
         @foreach (var job in _jobs)
         {
-            <MudCard Elevation="2" Class="mb-3">
-                <MudCardContent>
-                    <div class="d-flex justify-space-between align-start">
-                        <div style="min-width:0; flex:1; margin-right:12px;">
-                            <MudLink Href="@job.Url" Target="_blank" rel="noopener"
-                                     Typo="Typo.body1" Color="Color.Default"
-                                     Style="word-break:break-all;">
-                                @(job.Title ?? job.Url)
-                                <MudIcon Icon="@Icons.Material.Filled.OpenInNew" />
-                            </MudLink>
-                        </div>
-                        <div class="d-flex align-center flex-shrink-0">
-                            @if (job.Status == JobStatus.Running)
-                            {
-                                <MudProgressCircular Size="Size.Small" Indeterminate="true"
-                                                     Color="Color.Primary" Class="mr-2" />
-                            }
-                            <MudChip T="string" Color="@StatusChipColor(job.Status)"
-                                     Size="Size.Small" Class="mr-1">
-                                @job.Status.ToString().ToLowerInvariant()
-                            </MudChip>
-                            @if (job.Status is JobStatus.Pending or JobStatus.Running)
-                            {
-                                <MudIconButton Icon="@Icons.Material.Filled.Stop"
-                                               Color="Color.Error" Size="Size.Small"
-                                               title="Abbrechen"
-                                               OnClick="() => AbortJob(job.Id)" />
-                            }
-                            else if (job.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted)
-                            {
-                                <MudIconButton Icon="@Icons.Material.Filled.Replay"
-                                               Color="Color.Default" Size="Size.Small"
-                                               title="Erneut herunterladen"
-                                               OnClick="() => RequeueJob(job.Id)" />
-                            }
-                        </div>
-                    </div>
-                    @if (!string.IsNullOrWhiteSpace(job.Logs))
-                    {
-                        @if (job.Status == JobStatus.Running)
-                        {
-                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 mb-1">
-                                Aktueller Zustand: @(job.Phase == JobPhase.Preparing ? "Vorbereiten" : "Herunterladen")
-                            </MudText>
-                            <MudProgressLinear Color="Color.Info"
-                                               Class="mb-2"
-                                               Value="@(job.ProgressPercent ?? 0)"
-                                               Indeterminate="@(job.ProgressPercent is null)" />
-                        }
-                        <MudExpansionPanels Class="mt-2" Elevation="0">
-                            <MudExpansionPanel Text="@(job.Status == JobStatus.Running ? "Live-Log" : "Log anzeigen")"
-                                               Expanded="@(job.Status == JobStatus.Running)"
-                                               Dense="true">
-                                <div class="log-box">@job.Logs</div>
-                            </MudExpansionPanel>
-                        </MudExpansionPanels>
-                    }
-                </MudCardContent>
-            </MudCard>
+            <DownloadJobCard
+                Job="@job"
+                QueuePosition="@GetQueuePosition(job)"
+                OnAbort="AbortJob"
+                OnRequeue="RequeueJob" />
         }
     }
 
@@ -206,6 +69,8 @@
     private List<string> _history = [];
     private List<DownloadHistoryEntry> _historyEntries = [];
     private List<string> _duplicates = [];
+    private List<string> _resolvedUrlsAwaitingConfirmation = [];
+    private List<string> _deltaUrlsAwaitingConfirmation = [];
     private DateTimeOffset? _lastUpdated;
     private readonly HashSet<string> _notifiedTerminalJobs = [];
 
@@ -268,28 +133,66 @@
 
     private async Task StartDownloads()
     {
-        var urls = ParseUrls(_model.RawUrls);
+        var inputUrls = ParseUrls(_model.RawUrls);
+        if (inputUrls.Count == 0) return;
+
+        var urls = await ResolveUrlsAsync(inputUrls);
         if (urls.Count == 0) return;
 
+        _resolvedUrlsAwaitingConfirmation = urls;
+
         // Check for duplicates against download history
-        var dupes = urls.Where(_history.Contains).ToList();
+        var dupes = urls.Where(_history.Contains).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (dupes.Count > 0)
         {
             _duplicates = dupes;
+            _deltaUrlsAwaitingConfirmation = urls
+                .Except(dupes, StringComparer.OrdinalIgnoreCase)
+                .ToList();
             return;
         }
 
+        _deltaUrlsAwaitingConfirmation = [];
         EnqueueAll(urls);
     }
 
-    private void ForceDownload()
+    private async Task ForceDownload()
     {
-        var urls = ParseUrls(_model.RawUrls);
+        List<string> urls = _resolvedUrlsAwaitingConfirmation.Count > 0
+            ? new List<string>(_resolvedUrlsAwaitingConfirmation)
+            : await ResolveUrlsAsync(ParseUrls(_model.RawUrls));
+
         _duplicates = [];
+        _deltaUrlsAwaitingConfirmation = [];
+        _resolvedUrlsAwaitingConfirmation = [];
         EnqueueAll(urls);
     }
 
-    private void ClearDuplicateWarning() => _duplicates = [];
+    private void DownloadDelta()
+    {
+        List<string> delta = _deltaUrlsAwaitingConfirmation.Count > 0
+            ? new List<string>(_deltaUrlsAwaitingConfirmation)
+            : [];
+
+        _duplicates = [];
+        _deltaUrlsAwaitingConfirmation = [];
+        _resolvedUrlsAwaitingConfirmation = [];
+
+        if (delta.Count == 0)
+        {
+            Snackbar.Add("Keine neuen Folgen gefunden.", Severity.Info);
+            return;
+        }
+
+        EnqueueAll(delta);
+    }
+
+    private void ClearDuplicateWarning()
+    {
+        _duplicates = [];
+        _deltaUrlsAwaitingConfirmation = [];
+        _resolvedUrlsAwaitingConfirmation = [];
+    }
 
     private void EnqueueAll(List<string> urls)
     {
@@ -303,20 +206,54 @@
 
     private void RequeueJob(string id) => JobManager.Requeue(id);
 
+    private Task OnRawUrlsChanged(string value)
+    {
+        _model.RawUrls = value;
+        return Task.CompletedTask;
+    }
+
     private static List<string> ParseUrls(string raw) =>
         raw.Split('\n', StringSplitOptions.RemoveEmptyEntries)
            .Select(l => l.Trim())
            .Where(l => l.Length > 0 && !l.StartsWith('#'))
            .ToList();
 
-    private static Color StatusChipColor(JobStatus status) => status switch
+    private async Task<List<string>> ResolveUrlsAsync(List<string> inputUrls)
     {
-        JobStatus.Done    => Color.Success,
-        JobStatus.Error   => Color.Error,
-        JobStatus.Running => Color.Primary,
-        JobStatus.Aborted => Color.Warning,
-        _                 => Color.Default,
-    };
+        var resolved = new List<string>();
+
+        foreach (var inputUrl in inputUrls)
+        {
+            try
+            {
+                var expanded = await JobManager.ResolveInputUrlsAsync(inputUrl);
+                resolved.AddRange(expanded);
+            }
+            catch
+            {
+                // If expansion fails, keep the original input URL so the user can still download directly.
+                resolved.Add(inputUrl);
+            }
+        }
+
+        return resolved
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private int? GetQueuePosition(DownloadJob job)
+    {
+        if (job.Status != JobStatus.Queued)
+            return null;
+
+        var queued = _jobs
+            .Where(j => j.Status == JobStatus.Queued)
+            .OrderBy(j => j.CreatedAt)
+            .Select((j, idx) => new { j.Id, Position = idx + 1 })
+            .FirstOrDefault(x => x.Id == job.Id);
+
+        return queued?.Position;
+    }
 
     public void Dispose() => JobManager.JobsChanged -= OnJobsChanged;
 }

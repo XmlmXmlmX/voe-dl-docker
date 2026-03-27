@@ -1,0 +1,74 @@
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+
+<MudCard Elevation="2" Class="mb-4">
+    <MudCardContent>
+        <MudTextField T="string"
+                  Value="@RawUrls"
+                      ValueChanged="OnRawUrlsChanged"
+                      Label="URL(s) eingeben"
+                      HelperText="Eine URL pro Zeile"
+                      Lines="4"
+                      Variant="Variant.Outlined"
+                      Class="mb-2"
+                      Placeholder="https://voe.sx/xxxxxxx&#10;https://voe.sx/yyyyyyy"
+                      Style="font-family: monospace;" />
+
+        @if (Duplicates.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3" Variant="Variant.Outlined">
+                <MudText Typo="Typo.body2" Class="mb-1"><strong>Bereits heruntergeladen:</strong></MudText>
+                @foreach (var u in Duplicates)
+                {
+                    <MudText Typo="Typo.caption" Style="font-family:monospace; word-break:break-all;">@u</MudText>
+                }
+                <div class="mt-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small"
+                               Class="mr-2" OnClick="OnForceDownload">Erneut herunterladen</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                               Class="mr-2" OnClick="OnDownloadDelta">Nur Delta herunterladen</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                               OnClick="OnClearDuplicateWarning">Abbrechen</MudButton>
+                </div>
+            </MudAlert>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       OnClick="OnStartDownloads">
+                Download starten
+            </MudButton>
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter]
+    public string RawUrls { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> RawUrlsChanged { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<string> Duplicates { get; set; } = [];
+
+    [Parameter]
+    public EventCallback OnStartDownloads { get; set; }
+
+    [Parameter]
+    public EventCallback OnForceDownload { get; set; }
+
+    [Parameter]
+    public EventCallback OnDownloadDelta { get; set; }
+
+    [Parameter]
+    public EventCallback OnClearDuplicateWarning { get; set; }
+
+    private Task OnRawUrlsChanged(string value)
+    {
+        RawUrls = value;
+        return RawUrlsChanged.InvokeAsync(value);
+    }
+}

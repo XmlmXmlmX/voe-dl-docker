@@ -13,6 +13,8 @@ namespace VoeDl.Web.Services;
 /// </summary>
 public sealed class DownloadService
 {
+    private sealed record EpisodeContext(string SeriesName, int Season, int Episode);
+
     // ---------------------------------------------------------------
     // Constants / configuration
     // ---------------------------------------------------------------
@@ -21,6 +23,9 @@ public sealed class DownloadService
     private const int MaxDelayMs = 3_000;
     private const int DownloadBufferSize = 81_920;        // 80 KB streaming buffer
     private const long DownloadLogIntervalBytes = 10 * 1_048_576; // log every 10 MB
+
+    private static readonly string[] KnownVideoExtensions =
+        [".mp4", ".mkv", ".avi", ".mov", ".flv", ".wmv", ".webm", ".ts", ".m4v"];
 
     private static readonly string[] UserAgents =
     [
@@ -54,6 +59,20 @@ public sealed class DownloadService
 
     private static readonly string[] ObfuscationPatterns = ["@$", "^^", "~@", "%?", "*~", "!!", "#&"];
 
+    private static readonly string[] TruthyValues = ["1", "true", "yes", "on"];
+
+    private static readonly Regex StoRootRegex = new(
+        @"^https?://(?:www\.)?s\.to/serie/(?<slug>[a-z0-9\-]+?)/?$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex StoSeasonRegex = new(
+        @"^https?://(?:www\.)?s\.to/serie/(?<slug>[a-z0-9\-]+?)/staffel-(?<season>\d+)/?$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex StoEpisodeRegex = new(
+        @"^https?://(?:www\.)?s\.to/serie/(?<slug>[a-z0-9\-]+?)/staffel-(?<season>\d+)/episode-(?<episode>\d+)/?$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     // ---------------------------------------------------------------
     // Dependencies
     // ---------------------------------------------------------------
@@ -77,6 +96,75 @@ public sealed class DownloadService
     // ---------------------------------------------------------------
     // Public API
     // ---------------------------------------------------------------
+
+    public async Task<IReadOnlyList<string>> ExpandInputUrlAsync(
+        string inputUrl,
+        Action<string>? logCallback = null,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = NormalizeUrl(inputUrl);
+
+        if (StoEpisodeRegex.IsMatch(normalized))
+            return [normalized];
+
+        var seasonMatch = StoSeasonRegex.Match(normalized);
+        if (seasonMatch.Success)
+        {
+            var seasonSlug = seasonMatch.Groups["slug"].Value;
+            var seasonEpisodes = await CollectEpisodeUrlsAsync(normalized, seasonSlug, cancellationToken);
+            var uniqueSeasonEpisodes = seasonEpisodes
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(NormalizeUrl)
+                .Select(url => (Url: url, Ctx: TryParseStoEpisodeContext(url)))
+                .Where(x => x.Ctx is not null)
+                .OrderBy(x => x.Ctx!.Season)
+                .ThenBy(x => x.Ctx!.Episode)
+                .Select(x => x.Url)
+                .ToList();
+
+            return uniqueSeasonEpisodes.Count > 0 ? uniqueSeasonEpisodes : [normalized];
+        }
+
+        var rootMatch = StoRootRegex.Match(normalized);
+        if (!rootMatch.Success)
+            return [normalized];
+
+        var slug = rootMatch.Groups["slug"].Value;
+        logCallback?.Invoke($"[*] Resolving series URL: {normalized}");
+
+        var seasonLinks = await CollectSeasonUrlsAsync(normalized, slug, cancellationToken);
+        if (seasonLinks.Count == 0)
+        {
+            logCallback?.Invoke("[!] No seasons found on series page. Falling back to original URL.");
+            return [normalized];
+        }
+
+        var episodeUrls = new List<string>();
+        foreach (var seasonUrl in seasonLinks)
+        {
+            var episodesForSeason = await CollectEpisodeUrlsAsync(seasonUrl, slug, cancellationToken);
+            episodeUrls.AddRange(episodesForSeason);
+        }
+
+        var uniqueEpisodes = episodeUrls
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(NormalizeUrl)
+            .Select(url => (Url: url, Ctx: TryParseStoEpisodeContext(url)))
+            .Where(x => x.Ctx is not null)
+            .OrderBy(x => x.Ctx!.Season)
+            .ThenBy(x => x.Ctx!.Episode)
+            .Select(x => x.Url)
+            .ToList();
+
+        if (uniqueEpisodes.Count == 0)
+        {
+            logCallback?.Invoke("[!] No episodes found on season pages. Falling back to original URL.");
+            return [normalized];
+        }
+
+        logCallback?.Invoke($"[+] Enqueueing {uniqueEpisodes.Count} episodes from series URL.");
+        return uniqueEpisodes;
+    }
 
     /// <summary>
     /// Downloads the video at <paramref name="url"/> into
@@ -102,18 +190,49 @@ public sealed class DownloadService
             return 1;
         }
 
-        var createSubfolder = string.Equals(
-            Environment.GetEnvironmentVariable("CREATE_SUBFOLDER"), "1",
-            StringComparison.OrdinalIgnoreCase);
+        var episodeContext = TryParseStoEpisodeContext(url);
 
-        string outputDir = (createSubfolder && !string.IsNullOrWhiteSpace(folderName))
-            ? Path.Combine(downloadDir, SanitizePath(folderName))
-            : downloadDir;
+        var createSubfolder = ShouldCreateSubfolder();
+
+        string outputDir;
+        var tmdbLookupTitle = name;
+        var baseName = $"{SanitizeFilename(name)}_SS";
+
+        if (episodeContext is not null)
+        {
+            var seriesDirName = SanitizePath(episodeContext.SeriesName);
+            var seriesRootDir = Path.Combine(downloadDir, seriesDirName);
+            var seasonDir = $"Season {episodeContext.Season:00}";
+            outputDir = Path.Combine(seriesRootDir, seasonDir);
+
+            baseName = SanitizeFilename(
+                $"{episodeContext.SeriesName} S{episodeContext.Season:00}E{episodeContext.Episode:00}");
+            name = episodeContext.SeriesName;
+            tmdbLookupTitle = $"{episodeContext.SeriesName} S{episodeContext.Season:00}E{episodeContext.Episode:00}";
+        }
+        else
+        {
+            outputDir = (createSubfolder && !string.IsNullOrWhiteSpace(folderName))
+                ? Path.Combine(downloadDir, SanitizePath(folderName))
+                : downloadDir;
+        }
 
         Directory.CreateDirectory(outputDir);
 
-        // The _SS suffix ("stream source") is kept from the original dl.py naming convention.
-        var baseName = $"{SanitizeFilename(name)}_SS";
+        Models.TmdbMetadata? resolvedMetadata = await _tmdb.LookupAsync(tmdbLookupTitle, cancellationToken);
+        if (resolvedMetadata is not null)
+            logCallback($"[+] TMDB: matched \"{resolvedMetadata.Title}\" ({resolvedMetadata.Kind}, id={resolvedMetadata.TmdbId})");
+        else
+            logCallback("[*] TMDB: no match found or token not configured.");
+
+        var existingEpisodeFile = TryFindExistingEpisodeFile(outputDir, resolvedMetadata);
+        if (existingEpisodeFile is not null)
+        {
+            logCallback($"[*] Episode already exists in target folder, skipping download: {existingEpisodeFile}");
+            await WriteResolvedNfoAsync(resolvedMetadata, existingEpisodeFile, logCallback, cancellationToken);
+            return 0;
+        }
+
         logCallback($"[*] Downloading {mediaType} stream: {sourceUrl}");
 
         int exitCode;
@@ -136,7 +255,12 @@ public sealed class DownloadService
         }
 
         if (exitCode == 0 && outputPath is not null)
-            await LookupAndWriteNfoAsync(name, outputPath, logCallback, cancellationToken);
+        {
+            if (resolvedMetadata is not null)
+                await WriteResolvedNfoAsync(resolvedMetadata, outputPath, logCallback, cancellationToken);
+            else
+                await LookupAndWriteNfoAsync(tmdbLookupTitle, outputPath, logCallback, cancellationToken);
+        }
 
         return exitCode;
     }
@@ -144,6 +268,122 @@ public sealed class DownloadService
     // ---------------------------------------------------------------
     // Source extraction
     // ---------------------------------------------------------------
+
+    private async Task<List<string>> CollectSeasonUrlsAsync(string seriesUrl, string slug, CancellationToken ct)
+    {
+        var html = await FetchHtmlAsync(seriesUrl, ct);
+        if (html is null) return [];
+
+        var seasonUrls = ExtractLinks(html, seriesUrl)
+            .Select(NormalizeUrl)
+            .Where(link => MatchesSlug(StoSeasonRegex.Match(link), slug))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(link => ParseSeasonNumberFromSeasonUrl(link))
+            .ToList();
+
+        return seasonUrls;
+    }
+
+    private async Task<List<string>> CollectEpisodeUrlsAsync(string seasonUrl, string slug, CancellationToken ct)
+    {
+        var html = await FetchHtmlAsync(seasonUrl, ct);
+        if (html is null) return [];
+
+        var episodeUrls = ExtractLinks(html, seasonUrl)
+            .Select(NormalizeUrl)
+            .Where(link => MatchesSlug(StoEpisodeRegex.Match(link), slug))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return episodeUrls;
+    }
+
+    private async Task<string?> FetchHtmlAsync(string url, CancellationToken ct)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            AddBrowserHeaders(request, url);
+            using var response = await _http.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadAsStringAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to fetch page while expanding URL: {Url}", url);
+            return null;
+        }
+    }
+
+    private static IEnumerable<string> ExtractLinks(string html, string baseUrl)
+    {
+        var regex = new Regex("href\\s*=\\s*[\"'](?<href>[^\"'#>\\s]+)[\"']", RegexOptions.IgnoreCase);
+        var baseUri = new Uri(baseUrl);
+
+        foreach (Match m in regex.Matches(html))
+        {
+            var href = m.Groups["href"].Value.Trim();
+            if (string.IsNullOrWhiteSpace(href))
+                continue;
+
+            if (href.StartsWith("//", StringComparison.Ordinal))
+                href = "https:" + href;
+
+            if (!Uri.TryCreate(href, UriKind.Absolute, out var absolute)
+                && Uri.TryCreate(baseUri, href, out var combined))
+            {
+                absolute = combined;
+            }
+
+            if (absolute is not null)
+                yield return absolute.ToString();
+        }
+    }
+
+    private static bool MatchesSlug(Match match, string expectedSlug)
+    {
+        if (!match.Success) return false;
+        var slug = match.Groups["slug"].Value;
+        return slug.Equals(expectedSlug, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int ParseSeasonNumberFromSeasonUrl(string seasonUrl)
+    {
+        var match = StoSeasonRegex.Match(seasonUrl);
+        return match.Success && int.TryParse(match.Groups["season"].Value, out var season)
+            ? season
+            : int.MaxValue;
+    }
+
+    private static EpisodeContext? TryParseStoEpisodeContext(string url)
+    {
+        var match = StoEpisodeRegex.Match(NormalizeUrl(url));
+        if (!match.Success) return null;
+
+        if (!int.TryParse(match.Groups["season"].Value, out var season)) return null;
+        if (!int.TryParse(match.Groups["episode"].Value, out var episode)) return null;
+
+        var slug = match.Groups["slug"].Value;
+        var seriesName = SlugToTitle(slug);
+        return new EpisodeContext(seriesName, season, episode);
+    }
+
+    private static string SlugToTitle(string slug)
+    {
+        var words = slug
+            .Split('-', StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.ToLowerInvariant())
+            .Select(w => char.ToUpperInvariant(w[0]) + w[1..]);
+        return string.Join(" ", words);
+    }
+
+    private static string NormalizeUrl(string url)
+    {
+        var trimmed = url.Trim();
+        if (trimmed.EndsWith('/'))
+            trimmed = trimmed.TrimEnd('/');
+        return trimmed;
+    }
 
     private async Task<(string? Url, string MediaType, string Name, string FolderName)> ExtractSourceAsync(
         string url,
@@ -479,6 +719,53 @@ public sealed class DownloadService
     // TMDB metadata + NFO
     // ---------------------------------------------------------------
 
+    private async Task WriteResolvedNfoAsync(
+        Models.TmdbMetadata? meta,
+        string outputPath,
+        Action<string> log,
+        CancellationToken ct)
+    {
+        if (meta is null)
+            return;
+
+        await _tmdb.WriteNfoAsync(outputPath, meta);
+        log($"[+] TMDB: NFO written → {Path.ChangeExtension(outputPath, ".nfo")}");
+
+        if (meta.Kind == Models.TmdbMediaKind.TvEpisode && ShouldWriteTvShowNfo())
+        {
+            var seasonDir = Path.GetDirectoryName(outputPath);
+            var showDir = !string.IsNullOrWhiteSpace(seasonDir)
+                ? Directory.GetParent(seasonDir)?.FullName ?? seasonDir
+                : Path.GetDirectoryName(outputPath) ?? ".";
+
+            if (await _tmdb.WriteTvShowNfoAsync(showDir, meta, ct))
+                log($"[+] TMDB: tvshow.nfo written → {Path.Combine(showDir, "tvshow.nfo")}");
+        }
+    }
+
+    private static string? TryFindExistingEpisodeFile(string outputDir, Models.TmdbMetadata? meta)
+    {
+        if (meta?.Kind != Models.TmdbMediaKind.TvEpisode
+            || !meta.SeasonNumber.HasValue
+            || !meta.EpisodeNumber.HasValue
+            || !Directory.Exists(outputDir))
+            return null;
+
+        var marker = $"S{meta.SeasonNumber.Value:00}E{meta.EpisodeNumber.Value:00}";
+
+        return Directory.EnumerateFiles(outputDir)
+            .FirstOrDefault(path =>
+            {
+                var ext = Path.GetExtension(path);
+                if (string.IsNullOrWhiteSpace(ext)
+                    || !KnownVideoExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase))
+                    return false;
+
+                var fileName = Path.GetFileNameWithoutExtension(path);
+                return fileName.Contains(marker, StringComparison.OrdinalIgnoreCase);
+            });
+    }
+
     private async Task LookupAndWriteNfoAsync(
         string rawTitle,
         string outputPath,
@@ -494,8 +781,7 @@ public sealed class DownloadService
                 return;
             }
             log($"[+] TMDB: matched \"{meta.Title}\" ({meta.Kind}, id={meta.TmdbId})");
-            await _tmdb.WriteNfoAsync(outputPath, meta);
-            log($"[+] TMDB: NFO written → {Path.ChangeExtension(outputPath, ".nfo")}");
+            await WriteResolvedNfoAsync(meta, outputPath, log, ct);
         }
         catch (Exception ex)
         {
@@ -726,6 +1012,24 @@ public sealed class DownloadService
 
     private static string SanitizePath(string path) =>
         string.Join("_", path.Split(Path.GetInvalidPathChars()));
+
+    private static bool ShouldCreateSubfolder()
+    {
+        return IsTruthyEnvironmentVariable("CREATE_SUBFOLDER");
+    }
+
+    private static bool ShouldWriteTvShowNfo() =>
+        IsTruthyEnvironmentVariable("WRITE_TVSHOW_NFO");
+
+    private static bool IsTruthyEnvironmentVariable(string variableName)
+    {
+        var raw = Environment.GetEnvironmentVariable(variableName);
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        var normalized = raw.Trim();
+        return TruthyValues.Any(v => normalized.Equals(v, StringComparison.OrdinalIgnoreCase));
+    }
 
     private static bool IsBaitSource(string source)
     {

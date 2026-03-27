@@ -87,7 +87,9 @@ The app checks `DOWNLOAD_DIR` first, then `DOWNLOAD_PATH`, so you only need to s
 | `DOWNLOAD_PATH` | `./downloads` | Host-side path for the volume mount in `docker compose`. Can also be used as the **container** download path in direct Docker / TrueNAS setups — must be an **absolute path** when used this way. |
 | `DOWNLOAD_DIR` | `/downloads` | Container download path (overrides `DOWNLOAD_PATH` when both are set). Always use an absolute path. |
 | `DOWNLOAD_TIMEOUT` | `3600` | Max download time in seconds before a job is cancelled |
+| `MAX_CONCURRENT_DOWNLOADS` | `3` | Maximum number of downloads running in parallel; additional jobs stay queued |
 | `CREATE_SUBFOLDER` | `0` | Set to `1` to save each download in its own sub-directory named after the video title |
+| `WRITE_TVSHOW_NFO` | `0` | Set to `1` to additionally write `tvshow.nfo` in the series root folder for TV episode downloads |
 | `APP_VERSION` | `dev` | Application version label shown in the footer |
 
 ---

@@ -4,9 +4,26 @@ using Microsoft.Extensions.Logging;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-var postgres = builder.AddPostgres("postgres")
+var postgresUserValue = builder.Configuration["POSTGRES_USER"] ?? "voedl";
+var postgresPasswordValue = builder.Configuration["POSTGRES_PASSWORD"] ?? "voedl_pass";
+var postgresDatabase = builder.Configuration["POSTGRES_DB"] ?? "voedl";
+
+var postgresUser = builder.AddParameter(
+	"postgres-username",
+	postgresUserValue,
+	publishValueAsDefault: true,
+	secret: false);
+
+var postgresPassword = builder.AddParameter(
+	"postgres-password",
+	postgresPasswordValue,
+	publishValueAsDefault: false,
+	secret: true);
+
+var postgres = builder.AddPostgres("postgres", userName: postgresUser, password: postgresPassword)
 	.WithDataVolume("voedl-postgres-data");
-var appDb = postgres.AddDatabase("DefaultConnection");
+
+var appDb = postgres.AddDatabase("DefaultConnection", postgresDatabase);
 
 var webProjectPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "VoeDl.Web"));
 builder.Configuration

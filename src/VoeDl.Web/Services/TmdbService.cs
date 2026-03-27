@@ -112,6 +112,74 @@ public sealed class TmdbService
         await ms.CopyToAsync(fs);
     }
 
+    /// <summary>
+    /// Writes a Jellyfin/Kodi-compatible <c>tvshow.nfo</c> in the series root
+    /// directory using TMDB show metadata derived from an episode match.
+    /// Returns <see langword="false"/> when no TV show metadata can be resolved.
+    /// </summary>
+    public async Task<bool> WriteTvShowNfoAsync(string seriesDirectory, TmdbMetadata episodeMeta, CancellationToken ct = default)
+    {
+        if (!_configured || episodeMeta.ShowTmdbId is null)
+            return false;
+
+        var showId = episodeMeta.ShowTmdbId.Value;
+        var detailUrl = $"{ApiBase}tv/{showId}?language={_language}&append_to_response=external_ids";
+
+        using var detailDoc = await GetJsonAsync(detailUrl, ct);
+        if (detailDoc is null)
+            return false;
+
+        var d = detailDoc.RootElement;
+
+        var genres = new List<string>();
+        if (d.TryGetProperty("genres", out var gArr))
+            foreach (var g in gArr.EnumerateArray())
+                if (g.TryGetProperty("name", out var gn))
+                    genres.Add(gn.GetString() ?? "");
+
+        var studios = new List<string>();
+        if (d.TryGetProperty("production_companies", out var pc))
+            foreach (var c in pc.EnumerateArray())
+                if (c.TryGetProperty("name", out var cn))
+                    studios.Add(cn.GetString() ?? "");
+
+        string? imdbId = null;
+        if (d.TryGetProperty("external_ids", out var extIds) &&
+            extIds.TryGetProperty("imdb_id", out var imdbEl))
+            imdbId = imdbEl.GetString();
+
+        var seriesMeta = new TmdbMetadata
+        {
+            Kind = TmdbMediaKind.TvEpisode,
+            TmdbId = showId,
+            ShowTmdbId = showId,
+            ShowTitle = GetString(d, "name") ?? episodeMeta.ShowTitle ?? episodeMeta.Title,
+            Title = GetString(d, "name") ?? episodeMeta.ShowTitle ?? episodeMeta.Title,
+            OriginalTitle = GetString(d, "original_name") ?? "",
+            Overview = GetString(d, "overview") ?? "",
+            ReleaseDate = GetString(d, "first_air_date"),
+            VoteAverage = GetDouble(d, "vote_average"),
+            VoteCount = GetInt(d, "vote_count"),
+            PosterPath = GetString(d, "poster_path"),
+            BackdropPath = GetString(d, "backdrop_path"),
+            Genres = genres,
+            Studios = studios,
+            ImdbId = imdbId,
+        };
+
+        Directory.CreateDirectory(seriesDirectory);
+        var nfoPath = Path.Combine(seriesDirectory, "tvshow.nfo");
+        var doc = BuildTvShowNfo(seriesMeta);
+
+        using var ms = new MemoryStream();
+        doc.Save(ms);
+        ms.Position = 0;
+
+        await using var fs = new FileStream(nfoPath, FileMode.Create, FileAccess.Write, FileShare.None);
+        await ms.CopyToAsync(fs, ct);
+        return true;
+    }
+
     // ---------------------------------------------------------------
     // Movie lookup
     // ---------------------------------------------------------------
@@ -206,12 +274,38 @@ public sealed class TmdbService
         var results = searchDoc.RootElement.GetProperty("results");
         if (results.GetArrayLength() == 0) return null;
 
-        int showId = results[0].GetProperty("id").GetInt32();
-        string showName = GetString(results[0], "name") ?? showTitle;
+        var bestShow = PickBestTvResult(results, showTitle);
+        int showId = bestShow.GetProperty("id").GetInt32();
+        string showName = GetString(bestShow, "name") ?? showTitle;
 
         var epUrl = $"{ApiBase}tv/{showId}/season/{season}/episode/{episode}?language={_language}";
         using var epDoc = await GetJsonAsync(epUrl, ct);
-        if (epDoc is null) return null;
+        if (epDoc is null)
+        {
+            _logger.LogInformation(
+                "TMDB episode details missing for {ShowName} S{Season:00}E{Episode:00}; falling back to show metadata.",
+                showName, season, episode);
+
+            return new TmdbMetadata
+            {
+                Kind = TmdbMediaKind.TvEpisode,
+                TmdbId = showId,
+                ShowTmdbId = showId,
+                ShowTitle = showName,
+                Title = showName,
+                OriginalTitle = showName,
+                Overview = GetString(bestShow, "overview") ?? "",
+                ReleaseDate = GetString(bestShow, "first_air_date"),
+                VoteAverage = GetDouble(bestShow, "vote_average"),
+                VoteCount = GetInt(bestShow, "vote_count"),
+                PosterPath = GetString(bestShow, "poster_path"),
+                BackdropPath = GetString(bestShow, "backdrop_path"),
+                SeasonNumber = season,
+                EpisodeNumber = episode,
+                EpisodeTitle = $"Episode {episode:00}",
+                AiredDate = null,
+            };
+        }
 
         var ep = epDoc.RootElement;
 
@@ -233,6 +327,52 @@ public sealed class TmdbService
             EpisodeTitle = GetString(ep, "name"),
             AiredDate = GetString(ep, "air_date"),
         };
+    }
+
+    private static JsonElement PickBestTvResult(JsonElement results, string showTitle)
+    {
+        var expected = NormalizeTitle(showTitle);
+        JsonElement? best = null;
+        int bestScore = int.MinValue;
+
+        foreach (var candidate in results.EnumerateArray())
+        {
+            var name = GetString(candidate, "name") ?? "";
+            var originalName = GetString(candidate, "original_name") ?? "";
+
+            var normName = NormalizeTitle(name);
+            var normOriginal = NormalizeTitle(originalName);
+
+            int score = 0;
+            if (normName == expected) score += 100;
+            if (normOriginal == expected) score += 90;
+            if (normName.Contains(expected, StringComparison.Ordinal)) score += 40;
+            if (normOriginal.Contains(expected, StringComparison.Ordinal)) score += 35;
+            if (expected.Contains(normName, StringComparison.Ordinal)) score += 20;
+
+            if (candidate.TryGetProperty("popularity", out var pop) && pop.ValueKind == JsonValueKind.Number)
+                score += (int)Math.Round(pop.GetDouble());
+
+            if (score > bestScore)
+            {
+                best = candidate;
+                bestScore = score;
+            }
+        }
+
+        return best ?? results[0];
+    }
+
+    private static string NormalizeTitle(string value)
+    {
+        var cleaned = value
+            .ToLowerInvariant()
+            .Replace(":", " ")
+            .Replace("-", " ")
+            .Replace("_", " ");
+
+        cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim();
+        return cleaned;
     }
 
     // ---------------------------------------------------------------
@@ -319,6 +459,44 @@ public sealed class TmdbService
                 new XAttribute("aspect", "thumb"),
                 $"{ImageBaseUrl}{meta.PosterPath}"));
         }
+
+        return new XDocument(new XDeclaration("1.0", "utf-8", null), root);
+    }
+
+    private static XDocument BuildTvShowNfo(TmdbMetadata meta)
+    {
+        int? year = TryParseYear(meta.ReleaseDate);
+        var root = new XElement("tvshow");
+
+        root.Add(new XElement("title", meta.ShowTitle ?? meta.Title));
+        if (!string.IsNullOrWhiteSpace(meta.OriginalTitle) && meta.OriginalTitle != meta.Title)
+            root.Add(new XElement("originaltitle", meta.OriginalTitle));
+        if (year.HasValue)
+            root.Add(new XElement("year", year.Value));
+        if (!string.IsNullOrWhiteSpace(meta.ReleaseDate))
+            root.Add(new XElement("premiered", meta.ReleaseDate));
+        if (!string.IsNullOrWhiteSpace(meta.Overview))
+            root.Add(new XElement("plot", meta.Overview));
+
+        root.Add(new XElement("rating", meta.VoteAverage.ToString("F1", CultureInfo.InvariantCulture)));
+        root.Add(new XElement("votes", meta.VoteCount));
+        root.Add(new XElement("uniqueid",
+            new XAttribute("type", "tmdb"),
+            new XAttribute("default", "true"),
+            meta.ShowTmdbId ?? meta.TmdbId));
+
+        if (!string.IsNullOrWhiteSpace(meta.ImdbId))
+            root.Add(new XElement("uniqueid", new XAttribute("type", "imdb"), meta.ImdbId));
+
+        foreach (var g in meta.Genres)
+            root.Add(new XElement("genre", g));
+        foreach (var s in meta.Studios)
+            root.Add(new XElement("studio", s));
+
+        if (!string.IsNullOrWhiteSpace(meta.PosterPath))
+            root.Add(new XElement("thumb", new XAttribute("aspect", "poster"), $"{ImageBaseUrl}{meta.PosterPath}"));
+        if (!string.IsNullOrWhiteSpace(meta.BackdropPath))
+            root.Add(new XElement("fanart", new XElement("thumb", $"{ImageBaseUrl}{meta.BackdropPath}")));
 
         return new XDocument(new XDeclaration("1.0", "utf-8", null), root);
     }

@@ -8,7 +8,7 @@ namespace VoeDl.Web.Services;
 
 /// <summary>
 /// In-memory job manager that mirrors the job lifecycle implemented in
-/// the original app.py (pending → running → done/error/aborted).
+/// the original app.py (queued → running → done/error/aborted).
 /// Thread-safe for concurrent Blazor component access.
 /// </summary>
 public sealed class JobManagerService
@@ -31,6 +31,8 @@ public sealed class JobManagerService
     private readonly string _downloadDir;
     private readonly string _historyFile;
     private readonly SemaphoreSlim _historyLock = new(1, 1);
+    private readonly SemaphoreSlim _downloadSlots;
+    private readonly int _maxConcurrentDownloads;
 
     // Raised whenever any job changes state so Blazor components can re-render
     public event Action? JobsChanged;
@@ -50,6 +52,10 @@ public sealed class JobManagerService
                        ?? Environment.GetEnvironmentVariable("DOWNLOAD_DIR")
                        ?? Environment.GetEnvironmentVariable("DOWNLOAD_PATH")
                        ?? "/downloads";
+
+        _maxConcurrentDownloads = ParseMaxConcurrentDownloads(configuration);
+        _downloadSlots = new SemaphoreSlim(_maxConcurrentDownloads, _maxConcurrentDownloads);
+        _logger.LogInformation("Max concurrent downloads configured to {MaxConcurrentDownloads}", _maxConcurrentDownloads);
 
         _downloadDir = Path.IsPathRooted(rawDir) ? rawDir : Path.GetFullPath(rawDir);
         Directory.CreateDirectory(_downloadDir);
@@ -81,11 +87,30 @@ public sealed class JobManagerService
         return job;
     }
 
-    /// <summary>Requests cancellation of a running or pending job.</summary>
+    /// <summary>
+    /// Expands known series URLs (for example s.to root URLs) into episode URLs
+    /// and enqueues one job per resulting URL.
+    /// </summary>
+    public async Task<IReadOnlyList<DownloadJob>> EnqueueResolvedAsync(string inputUrl, CancellationToken cancellationToken = default)
+    {
+        var resolvedUrls = await _downloader.ExpandInputUrlAsync(inputUrl, null, cancellationToken);
+        var jobs = new List<DownloadJob>(resolvedUrls.Count);
+        foreach (var resolvedUrl in resolvedUrls)
+            jobs.Add(Enqueue(resolvedUrl));
+        return jobs;
+    }
+
+    /// <summary>
+    /// Resolves a user input URL to one or many concrete download URLs.
+    /// </summary>
+    public Task<IReadOnlyList<string>> ResolveInputUrlsAsync(string inputUrl, CancellationToken cancellationToken = default) =>
+        _downloader.ExpandInputUrlAsync(inputUrl, null, cancellationToken);
+
+    /// <summary>Requests cancellation of a running or queued job.</summary>
     public bool Abort(string id)
     {
         if (!_jobs.TryGetValue(id, out var job)) return false;
-        if (job.Status is not (JobStatus.Pending or JobStatus.Running)) return false;
+        if (job.Status is not (JobStatus.Queued or JobStatus.Running)) return false;
 
         job.Status = JobStatus.Aborted;
         job.FinishedAt = DateTimeOffset.UtcNow;
@@ -168,19 +193,26 @@ public sealed class JobManagerService
         var cts = new CancellationTokenSource();
         _cancellations[job.Id] = cts;
 
-        int timeoutSeconds = int.TryParse(
-            Environment.GetEnvironmentVariable("DOWNLOAD_TIMEOUT"), out int t) ? t : 3600;
-
-        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
-
-        job.Status = JobStatus.Running;
+        job.Status = JobStatus.Queued;
         job.Phase = JobPhase.Preparing;
         job.ProgressPercent = null;
-        job.StartedAt = DateTimeOffset.UtcNow;
         NotifyChanged();
+
+        var slotAcquired = false;
 
         try
         {
+            await _downloadSlots.WaitAsync(cts.Token);
+            slotAcquired = true;
+
+            int timeoutSeconds = int.TryParse(
+                Environment.GetEnvironmentVariable("DOWNLOAD_TIMEOUT"), out int t) ? t : 3600;
+            cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+            job.Status = JobStatus.Running;
+            job.StartedAt = DateTimeOffset.UtcNow;
+            NotifyChanged();
+
             int exitCode = await _downloader.DownloadAsync(
                 job.Url,
                 _downloadDir,
@@ -212,7 +244,7 @@ public sealed class JobManagerService
             if (job.Status != JobStatus.Aborted)
             {
                 job.Status = JobStatus.Error;
-                job.Logs += $"\nDownload timed out after {timeoutSeconds} seconds.";
+                job.Logs += "\nDownload cancelled or timed out.";
             }
         }
         catch (Exception ex)
@@ -226,6 +258,9 @@ public sealed class JobManagerService
         }
         finally
         {
+            if (slotAcquired)
+                _downloadSlots.Release();
+
             job.FinishedAt = DateTimeOffset.UtcNow;
             _cancellations.TryRemove(job.Id, out var removed);
             try { removed?.Dispose(); } catch { /* ignore */ }
@@ -286,4 +321,15 @@ public sealed class JobManagerService
     }
 
     private void NotifyChanged() => JobsChanged?.Invoke();
+
+    private static int ParseMaxConcurrentDownloads(IConfiguration configuration)
+    {
+        var raw = configuration["MAX_CONCURRENT_DOWNLOADS"]
+                  ?? Environment.GetEnvironmentVariable("MAX_CONCURRENT_DOWNLOADS");
+
+        if (!int.TryParse(raw, out var value) || value < 1)
+            return 3;
+
+        return Math.Min(value, 20);
+    }
 }

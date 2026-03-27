@@ -1,0 +1,101 @@
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@using VoeDl.Web.Models
+
+<MudCard Elevation="2" Class="mb-3">
+    <MudCardContent>
+        <div class="d-flex justify-space-between align-start">
+            <div style="min-width:0; flex:1; margin-right:12px;">
+                <MudLink Href="@Job.Url" Target="_blank" rel="noopener"
+                         Typo="Typo.body1" Color="Color.Default"
+                         Style="word-break:break-all;">
+                    @(Job.Title ?? Job.Url)
+                    <MudIcon Icon="@Icons.Material.Filled.OpenInNew" />
+                </MudLink>
+            </div>
+            <div class="d-flex align-center flex-shrink-0">
+                @if (Job.Status == JobStatus.Running)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true"
+                                         Color="Color.Primary" Class="mr-2" />
+                }
+                else if (Job.Status == JobStatus.Queued)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Schedule" Color="Color.Warning" Size="Size.Small" Class="mr-2" />
+                }
+                <MudChip T="string" Color="@StatusChipColor(Job.Status)"
+                         Size="Size.Small" Class="mr-1">
+                    @Job.Status.ToString().ToLowerInvariant()
+                </MudChip>
+                @if (Job.Status is JobStatus.Queued or JobStatus.Running)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Stop"
+                                   Color="Color.Error" Size="Size.Small"
+                                   title="Abbrechen"
+                                   OnClick="Abort" />
+                }
+                else if (Job.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Replay"
+                                   Color="Color.Default" Size="Size.Small"
+                                   title="Erneut herunterladen"
+                                   OnClick="Requeue" />
+                }
+            </div>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(Job.Logs))
+        {
+            @if (Job.Status == JobStatus.Running)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 mb-1">
+                    Aktueller Zustand: @(Job.Phase == JobPhase.Preparing ? "Vorbereiten" : "Herunterladen")
+                </MudText>
+                <MudProgressLinear Color="Color.Info"
+                                   Class="mb-2"
+                                   Value="@(Job.ProgressPercent ?? 0)"
+                                   Indeterminate="@(Job.ProgressPercent is null)" />
+            }
+            <MudExpansionPanels Class="mt-2" Elevation="0">
+                <MudExpansionPanel Text="@(Job.Status == JobStatus.Running ? "Live-Log" : "Log anzeigen")"
+                                   Expanded="@(Job.Status == JobStatus.Running)"
+                                   Dense="true">
+                    <div class="log-box">@Job.Logs</div>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+        else if (Job.Status == JobStatus.Queued)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Warning" Class="mt-2">
+                In Warteschlange @(QueuePosition.HasValue ? $"(Position {QueuePosition.Value})" : string.Empty)
+            </MudText>
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter, EditorRequired]
+    public DownloadJob Job { get; set; } = default!;
+
+    [Parameter]
+    public int? QueuePosition { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnAbort { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnRequeue { get; set; }
+
+    private Task Abort() => OnAbort.InvokeAsync(Job.Id);
+
+    private Task Requeue() => OnRequeue.InvokeAsync(Job.Id);
+
+    private static Color StatusChipColor(JobStatus status) => status switch
+    {
+        JobStatus.Done => Color.Success,
+        JobStatus.Error => Color.Error,
+        JobStatus.Running => Color.Primary,
+        JobStatus.Queued => Color.Warning,
+        JobStatus.Aborted => Color.Warning,
+        _ => Color.Default,
+    };
+}
