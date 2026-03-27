@@ -17,6 +17,21 @@ RUN dotnet publish src/VoeDl.Web/VoeDl.Web.csproj \
     -o /app/publish \
     --no-restore
 
+# Some container build environments publish framework static assets via endpoint
+# metadata only, which can lead to missing physical /wwwroot/_framework files.
+# Ensure blazor.web.js exists so clients can always bootstrap Blazor Server.
+RUN if [ ! -f /app/publish/wwwroot/_framework/blazor.web.js ]; then \
+            echo "blazor.web.js missing from publish output, copying fallback asset"; \
+            mkdir -p /app/publish/wwwroot/_framework; \
+            ASSET_PATH="$(find /root/.nuget/packages/microsoft.aspnetcore.app.internal.assets -path '*/_framework/blazor.web.js' | head -n 1)"; \
+            if [ -n "$ASSET_PATH" ]; then \
+                cp "$ASSET_PATH" /app/publish/wwwroot/_framework/blazor.web.js; \
+            else \
+                echo "ERROR: could not locate fallback blazor.web.js in NuGet cache"; \
+                exit 1; \
+            fi; \
+        fi
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Stage 2 – runtime image
 # ──────────────────────────────────────────────────────────────────────────────
