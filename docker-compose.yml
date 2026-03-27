@@ -8,8 +8,10 @@ services:
       - "8080:8080"
     volumes:
       - ${DOWNLOAD_PATH:-./downloads}:/downloads
+      - ${DATAPROTECTION_PATH:-./dataprotection}:/var/lib/voedl/dataprotection
     environment:
       - DOWNLOAD_DIR=/downloads
+      - DataProtection__KeysPath=/var/lib/voedl/dataprotection
       - ConnectionStrings__DefaultConnection=Host=db;Database=voedl;Username=voedl;Password=${POSTGRES_PASSWORD:-voedl_pass}
     depends_on:
       db:

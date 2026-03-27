@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
 using VoeDl.ServiceDefaults;
 using VoeDl.Web.Components;
 using VoeDl.Web.Data;
 using VoeDl.Web.Services;
+using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -73,6 +75,19 @@ builder.Services.AddSingleton<TmdbService>();
 builder.Services.AddSingleton<DownloadService>();
 builder.Services.AddSingleton<JobManagerService>();
 builder.Services.AddSingleton<IJobManagerService>(sp => sp.GetRequiredService<JobManagerService>());
+
+// Persist data protection keys to a configurable path so antiforgery tokens
+// remain decryptable across container restarts and updates.
+var dataProtectionBuilder = builder.Services
+    .AddDataProtection()
+    .SetApplicationName("VoeDl.Web");
+
+var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
+{
+    Directory.CreateDirectory(dataProtectionKeysPath);
+    dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
+}
 
 // Add services to the container.
 builder.Services.AddMudServices();

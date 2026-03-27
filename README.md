@@ -80,6 +80,18 @@ In TrueNAS Scale's Docker (or Apps) configuration, set the **container path** fo
 
 The app checks `DOWNLOAD_DIR` first, then `DOWNLOAD_PATH`, so you only need to set one of them.
 
+To avoid antiforgery/session errors after app restarts, also persist ASP.NET Data Protection keys:
+
+1. Add a second storage mount in the TrueNAS app UI:
+   - **Host path**: a persistent dataset/folder (e.g. `/mnt/pool/appdata/voedl-dataprotection`)
+   - **Mount path (container path)**: `/var/lib/voedl/dataprotection`
+2. Set the environment variable:
+   ```
+   DataProtection__KeysPath=/var/lib/voedl/dataprotection
+   ```
+
+If keys are not persisted, existing browser antiforgery cookies can no longer be decrypted after container recreation/redeploy.
+
 ### Environment Variables
 
 | Variable | Default | Description |
@@ -91,6 +103,8 @@ The app checks `DOWNLOAD_DIR` first, then `DOWNLOAD_PATH`, so you only need to s
 | `CREATE_SUBFOLDER` | `0` | Set to `1` to save each download in its own sub-directory named after the video title |
 | `WRITE_TVSHOW_NFO` | `0` | Set to `1` to additionally write `tvshow.nfo` in the series root folder for TV episode downloads |
 | `APP_VERSION` | `dev` | Application version label shown in the footer |
+| `DATAPROTECTION_PATH` | `./dataprotection` | Host-side path for persisting ASP.NET Core Data Protection keys in `docker compose`. |
+| `DataProtection__KeysPath` | `/var/lib/voedl/dataprotection` | Container path used by ASP.NET Core for Data Protection key storage. Must point to persistent storage in Docker/TrueNAS. |
 
 ---
 
