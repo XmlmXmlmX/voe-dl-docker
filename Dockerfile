@@ -23,11 +23,12 @@ RUN dotnet publish src/VoeDl.Web/VoeDl.Web.csproj \
 RUN if [ ! -f /app/publish/wwwroot/_framework/blazor.web.js ]; then \
             echo "blazor.web.js missing from publish output, copying fallback asset"; \
             mkdir -p /app/publish/wwwroot/_framework; \
-            ASSET_PATH="$(find /root/.nuget/packages/microsoft.aspnetcore.app.internal.assets -path '*/_framework/blazor.web.js' | head -n 1)"; \
+            ASSET_PATH="$(find /root/.nuget/packages /usr/share/dotnet/packs -path '*/_framework/blazor.web.js' 2>/dev/null | head -n 1 || true)"; \
             if [ -n "$ASSET_PATH" ]; then \
+                echo "Using fallback asset from: $ASSET_PATH"; \
                 cp "$ASSET_PATH" /app/publish/wwwroot/_framework/blazor.web.js; \
             else \
-                echo "ERROR: could not locate fallback blazor.web.js in NuGet cache"; \
+                echo "ERROR: could not locate fallback blazor.web.js in known SDK/NuGet locations"; \
                 exit 1; \
             fi; \
         fi
