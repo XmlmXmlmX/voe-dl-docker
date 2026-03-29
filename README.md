@@ -86,6 +86,10 @@ Optional: Configure a dedicated TV/series target directory. When set, downloads 
 DOWNLOAD_DIR_SERIES=/series
 ```
 
+Accepted aliases: `SERIES_DOWNLOAD_DIR`, `TV_DOWNLOAD_DIR`, `DOWNLOAD_DIR_TV`.
+
+Important: enter real absolute paths (for example `/downloads`, `/series`) and not placeholder strings like `/DOWNLOAD_DIR`.
+
 To avoid antiforgery/session errors after app restarts, also persist ASP.NET Data Protection keys:
 
 1. Add a second storage mount in the TrueNAS app UI:
@@ -157,6 +161,7 @@ Without this, encryption keys are lost on container restart and old tokens can't
 | `DOWNLOAD_PATH` | `./downloads` | Host-side path for the volume mount in `docker compose`. Can also be used as the **container** download path in direct Docker / TrueNAS setups — must be an **absolute path** when used this way. |
 | `DOWNLOAD_DIR` | `/downloads` | Container download path (overrides `DOWNLOAD_PATH` when both are set). Always use an absolute path. |
 | `DOWNLOAD_DIR_SERIES` | (falls back to `DOWNLOAD_DIR`) | Optional second container path for TV episode downloads. If set, episodes are routed automatically to this directory. |
+| `SERIES_DOWNLOAD_DIR` / `TV_DOWNLOAD_DIR` / `DOWNLOAD_DIR_TV` | (alias) | Alternative names for `DOWNLOAD_DIR_SERIES`. |
 | `DOWNLOAD_TIMEOUT` | `3600` | Max download time in seconds before a job is cancelled |
 | `MAX_CONCURRENT_DOWNLOADS` | `3` | Maximum number of downloads running in parallel; additional jobs stay queued |
 | `CREATE_SUBFOLDER` | `0` | Set to `1` to save each download in its own sub-directory named after the video title |

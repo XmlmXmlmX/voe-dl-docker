@@ -208,6 +208,7 @@ public sealed class DownloadService
             var seriesRootDir = Path.Combine(resolvedSeriesRoot, seriesDirName);
             var seasonDir = $"Season {episodeContext.Season:00}";
             outputDir = Path.Combine(seriesRootDir, seasonDir);
+            logCallback($"[*] URL identified as series episode, using series directory: {outputDir}");
 
             baseName = SanitizeFilename(
                 $"{episodeContext.SeriesName} S{episodeContext.Season:00}E{episodeContext.Episode:00}");

@@ -48,16 +48,22 @@ public sealed class JobManagerService : IJobManagerService
         _logger = logger;
         _dbFactory = services.GetService<IDbContextFactory<AppDbContext>>();
 
-        string rawDir = configuration["DOWNLOAD_DIR"]
-                       ?? configuration["DOWNLOAD_PATH"]
-                       ?? Environment.GetEnvironmentVariable("DOWNLOAD_DIR")
-                       ?? Environment.GetEnvironmentVariable("DOWNLOAD_PATH")
-                       ?? "/downloads";
+        string rawDir = FirstMeaningfulDirectoryValue(
+            configuration["DOWNLOAD_DIR"],
+            configuration["DOWNLOAD_PATH"],
+            Environment.GetEnvironmentVariable("DOWNLOAD_DIR"),
+            Environment.GetEnvironmentVariable("DOWNLOAD_PATH"))
+            ?? "/downloads";
 
-        string? rawSeriesDir = configuration["DOWNLOAD_DIR_SERIES"]
-                    ?? configuration["SERIES_DOWNLOAD_DIR"]
-                    ?? Environment.GetEnvironmentVariable("DOWNLOAD_DIR_SERIES")
-                    ?? Environment.GetEnvironmentVariable("SERIES_DOWNLOAD_DIR");
+        string? rawSeriesDir = FirstMeaningfulDirectoryValue(
+            configuration["DOWNLOAD_DIR_SERIES"],
+            configuration["SERIES_DOWNLOAD_DIR"],
+            configuration["TV_DOWNLOAD_DIR"],
+            configuration["DOWNLOAD_DIR_TV"],
+            Environment.GetEnvironmentVariable("DOWNLOAD_DIR_SERIES"),
+            Environment.GetEnvironmentVariable("SERIES_DOWNLOAD_DIR"),
+            Environment.GetEnvironmentVariable("TV_DOWNLOAD_DIR"),
+            Environment.GetEnvironmentVariable("DOWNLOAD_DIR_TV"));
         
         _logger.LogInformation("Download directory resolution (first match wins):");
         _logger.LogInformation("  Config[DOWNLOAD_DIR] = {ConfigDownloadDir}", configuration["DOWNLOAD_DIR"] ?? "(null)");
@@ -66,7 +72,13 @@ public sealed class JobManagerService : IJobManagerService
         _logger.LogInformation("  Env[DOWNLOAD_PATH] = {EnvDownloadPath}", Environment.GetEnvironmentVariable("DOWNLOAD_PATH") ?? "(null)");
         _logger.LogInformation("  => Using: {ResolvedDir}", rawDir);
         _logger.LogInformation("  Config[DOWNLOAD_DIR_SERIES] = {ConfigSeriesDir}", configuration["DOWNLOAD_DIR_SERIES"] ?? "(null)");
+        _logger.LogInformation("  Config[SERIES_DOWNLOAD_DIR] = {ConfigSeriesDirLegacy}", configuration["SERIES_DOWNLOAD_DIR"] ?? "(null)");
+        _logger.LogInformation("  Config[TV_DOWNLOAD_DIR] = {ConfigTvDownloadDir}", configuration["TV_DOWNLOAD_DIR"] ?? "(null)");
+        _logger.LogInformation("  Config[DOWNLOAD_DIR_TV] = {ConfigDownloadDirTv}", configuration["DOWNLOAD_DIR_TV"] ?? "(null)");
         _logger.LogInformation("  Env[DOWNLOAD_DIR_SERIES] = {EnvSeriesDir}", Environment.GetEnvironmentVariable("DOWNLOAD_DIR_SERIES") ?? "(null)");
+        _logger.LogInformation("  Env[SERIES_DOWNLOAD_DIR] = {EnvSeriesDirLegacy}", Environment.GetEnvironmentVariable("SERIES_DOWNLOAD_DIR") ?? "(null)");
+        _logger.LogInformation("  Env[TV_DOWNLOAD_DIR] = {EnvTvDownloadDir}", Environment.GetEnvironmentVariable("TV_DOWNLOAD_DIR") ?? "(null)");
+        _logger.LogInformation("  Env[DOWNLOAD_DIR_TV] = {EnvDownloadDirTv}", Environment.GetEnvironmentVariable("DOWNLOAD_DIR_TV") ?? "(null)");
         _logger.LogInformation("  => Using series dir: {ResolvedSeriesDir}", rawSeriesDir ?? rawDir);
 
         _maxConcurrentDownloads = ParseMaxConcurrentDownloads(configuration);
@@ -86,6 +98,41 @@ public sealed class JobManagerService : IJobManagerService
         Directory.CreateDirectory(_seriesDownloadDir);
         _historyFile = Path.Combine(_downloadDir, "downloaded_urls.txt");
         _logger.LogInformation("Download history file: {HistoryFile}", _historyFile);
+    }
+
+    private static string? FirstMeaningfulDirectoryValue(params string?[] candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            var normalized = NormalizeDirectoryCandidate(candidate);
+            if (normalized is not null)
+                return normalized;
+        }
+
+        return null;
+    }
+
+    private static string? NormalizeDirectoryCandidate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var trimmed = value.Trim();
+
+        // Ignore unresolved placeholders often entered in NAS UIs by mistake.
+        if (trimmed.StartsWith("${", StringComparison.Ordinal) ||
+            trimmed.StartsWith("$", StringComparison.Ordinal) ||
+            trimmed.Equals("DOWNLOAD_DIR", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("/DOWNLOAD_DIR", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("DOWNLOAD_PATH", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("/DOWNLOAD_PATH", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("DOWNLOAD_DIR_SERIES", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("/DOWNLOAD_DIR_SERIES", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("SERIES_DOWNLOAD_DIR", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("/SERIES_DOWNLOAD_DIR", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return trimmed;
     }
 
     // ------------------------------------------------------------------
