@@ -12,6 +12,9 @@ RUN dotnet restore src/VoeDl.Web/VoeDl.Web.csproj
 
 # Copy the rest of the source and publish
 COPY src/ src/
+# Re-run restore with full sources available so static web assets are correctly
+# materialized for Linux publish output (including /wwwroot/_framework files).
+RUN dotnet restore src/VoeDl.Web/VoeDl.Web.csproj --force-evaluate
 RUN dotnet publish src/VoeDl.Web/VoeDl.Web.csproj \
     -c Release \
     -o /app/publish \

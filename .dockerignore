@@ -1,0 +1,21 @@
+# Build outputs
+**/bin/
+**/obj/
+
+# IDE and local settings
+.vs/
+.vscode/
+
+# Git metadata
+.git/
+.gitignore
+.github/
+
+# Local artifacts and temp files
+artifacts/
+*.tgz
+*.log
+
+# Optional docs/dev files not needed for image build
+BUILD.md
+CHANGELOG.md
