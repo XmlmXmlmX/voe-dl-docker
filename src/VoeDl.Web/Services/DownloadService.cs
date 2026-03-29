@@ -175,6 +175,7 @@ public sealed class DownloadService
     public async Task<int> DownloadAsync(
         string url,
         string downloadDir,
+        string? seriesDownloadDir,
         Action<string> logCallback,
         CancellationToken cancellationToken = default)
     {
@@ -191,6 +192,9 @@ public sealed class DownloadService
         }
 
         var episodeContext = TryParseStoEpisodeContext(url);
+        var resolvedSeriesRoot = string.IsNullOrWhiteSpace(seriesDownloadDir)
+            ? downloadDir
+            : seriesDownloadDir;
 
         var createSubfolder = ShouldCreateSubfolder();
 
@@ -201,7 +205,7 @@ public sealed class DownloadService
         if (episodeContext is not null)
         {
             var seriesDirName = SanitizePath(episodeContext.SeriesName);
-            var seriesRootDir = Path.Combine(downloadDir, seriesDirName);
+            var seriesRootDir = Path.Combine(resolvedSeriesRoot, seriesDirName);
             var seasonDir = $"Season {episodeContext.Season:00}";
             outputDir = Path.Combine(seriesRootDir, seasonDir);
 
@@ -220,6 +224,24 @@ public sealed class DownloadService
         Directory.CreateDirectory(outputDir);
 
         Models.TmdbMetadata? resolvedMetadata = await _tmdb.LookupAsync(tmdbLookupTitle, cancellationToken);
+        if (episodeContext is null &&
+            resolvedMetadata?.Kind == Models.TmdbMediaKind.TvEpisode &&
+            !string.IsNullOrWhiteSpace(seriesDownloadDir))
+        {
+            var seriesName = resolvedMetadata.ShowTitle ?? resolvedMetadata.Title;
+            var seriesDirName = SanitizePath(seriesName);
+            var seasonDir = $"Season {(resolvedMetadata.SeasonNumber ?? 1):00}";
+            outputDir = Path.Combine(resolvedSeriesRoot, seriesDirName, seasonDir);
+
+            if (resolvedMetadata.SeasonNumber.HasValue && resolvedMetadata.EpisodeNumber.HasValue)
+            {
+                baseName = SanitizeFilename(
+                    $"{seriesName} S{resolvedMetadata.SeasonNumber.Value:00}E{resolvedMetadata.EpisodeNumber.Value:00}");
+            }
+
+            logCallback($"[*] Routed download to series directory: {outputDir}");
+        }
+
         if (resolvedMetadata is not null)
             logCallback($"[+] TMDB: matched \"{resolvedMetadata.Title}\" ({resolvedMetadata.Kind}, id={resolvedMetadata.TmdbId})");
         else

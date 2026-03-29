@@ -29,6 +29,7 @@ public sealed class JobManagerService : IJobManagerService
     private readonly IDbContextFactory<AppDbContext>? _dbFactory;
 
     private readonly string _downloadDir;
+    private readonly string _seriesDownloadDir;
     private readonly string _historyFile;
     private readonly SemaphoreSlim _historyLock = new(1, 1);
     private readonly SemaphoreSlim _downloadSlots;
@@ -52,6 +53,11 @@ public sealed class JobManagerService : IJobManagerService
                        ?? Environment.GetEnvironmentVariable("DOWNLOAD_DIR")
                        ?? Environment.GetEnvironmentVariable("DOWNLOAD_PATH")
                        ?? "/downloads";
+
+        string? rawSeriesDir = configuration["DOWNLOAD_DIR_SERIES"]
+                    ?? configuration["SERIES_DOWNLOAD_DIR"]
+                    ?? Environment.GetEnvironmentVariable("DOWNLOAD_DIR_SERIES")
+                    ?? Environment.GetEnvironmentVariable("SERIES_DOWNLOAD_DIR");
         
         _logger.LogInformation("Download directory resolution (first match wins):");
         _logger.LogInformation("  Config[DOWNLOAD_DIR] = {ConfigDownloadDir}", configuration["DOWNLOAD_DIR"] ?? "(null)");
@@ -59,6 +65,9 @@ public sealed class JobManagerService : IJobManagerService
         _logger.LogInformation("  Env[DOWNLOAD_DIR] = {EnvDownloadDir}", Environment.GetEnvironmentVariable("DOWNLOAD_DIR") ?? "(null)");
         _logger.LogInformation("  Env[DOWNLOAD_PATH] = {EnvDownloadPath}", Environment.GetEnvironmentVariable("DOWNLOAD_PATH") ?? "(null)");
         _logger.LogInformation("  => Using: {ResolvedDir}", rawDir);
+        _logger.LogInformation("  Config[DOWNLOAD_DIR_SERIES] = {ConfigSeriesDir}", configuration["DOWNLOAD_DIR_SERIES"] ?? "(null)");
+        _logger.LogInformation("  Env[DOWNLOAD_DIR_SERIES] = {EnvSeriesDir}", Environment.GetEnvironmentVariable("DOWNLOAD_DIR_SERIES") ?? "(null)");
+        _logger.LogInformation("  => Using series dir: {ResolvedSeriesDir}", rawSeriesDir ?? rawDir);
 
         _maxConcurrentDownloads = ParseMaxConcurrentDownloads(configuration);
         _downloadSlots = new SemaphoreSlim(_maxConcurrentDownloads, _maxConcurrentDownloads);
@@ -68,8 +77,13 @@ public sealed class JobManagerService : IJobManagerService
             _logger.LogWarning("PostgreSQL not configured. Download history will be stored in file.");
 
         _downloadDir = Path.IsPathRooted(rawDir) ? rawDir : Path.GetFullPath(rawDir);
+        _seriesDownloadDir = string.IsNullOrWhiteSpace(rawSeriesDir)
+            ? _downloadDir
+            : (Path.IsPathRooted(rawSeriesDir) ? rawSeriesDir : Path.GetFullPath(rawSeriesDir));
         _logger.LogInformation("Final download directory (absolute path): {FinalDownloadDir}", _downloadDir);
+        _logger.LogInformation("Final series directory (absolute path): {FinalSeriesDownloadDir}", _seriesDownloadDir);
         Directory.CreateDirectory(_downloadDir);
+        Directory.CreateDirectory(_seriesDownloadDir);
         _historyFile = Path.Combine(_downloadDir, "downloaded_urls.txt");
         _logger.LogInformation("Download history file: {HistoryFile}", _historyFile);
     }
@@ -92,7 +106,9 @@ public sealed class JobManagerService : IJobManagerService
     public DownloadJob Enqueue(string url)
     {
         var job = new DownloadJob { Url = url };
-        _jobs[job.Id] = job;        _logger.LogInformation("Enqueued download job {JobId} for URL {Url}", job.Id, url);        NotifyChanged();
+        _jobs[job.Id] = job;
+        _logger.LogInformation("Enqueued download job {JobId} for URL {Url}", job.Id, url);
+        NotifyChanged();
 
         _ = Task.Run(() => RunJobAsync(job));
         return job;
@@ -251,6 +267,7 @@ public sealed class JobManagerService : IJobManagerService
             int exitCode = await _downloader.DownloadAsync(
                 job.Url,
                 _downloadDir,
+                _seriesDownloadDir,
                 line =>
                 {
                     job.Logs += line + "\n";
