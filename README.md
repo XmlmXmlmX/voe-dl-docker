@@ -178,6 +178,16 @@ Without this, encryption keys are lost on container restart and old tokens can't
 
 Downloaded videos are saved to the configured download directory (default `/downloads` inside the container, mapped to `./downloads` on the host).
 
+## 🔎 MediathekViewWeb-Suche
+
+Die App kann jetzt auch MediathekViewWeb-Ergebnisse über den RSS-Feed durchsuchen. Gib einen Suchbegriff in der neuen MediathekViewWeb-Suche ein und lade gefundene Videos direkt aus der Ergebnisliste herunter.
+
+Als Alternative zum UI-Suchfeld kannst du auch eine Zeile mit einem MediathekViewWeb-Feed oder einer Suchanfrage in das URL-Feld einfügen:
+
+- `mvw:8 blickwinkel`
+- `mediathek:8 blickwinkel`
+- `https://mediathekviewweb.de/feed?query=8%20blickwinkel&everywhere=true`
+
 ---
 
 ## 💡 Contributing

@@ -5,6 +5,7 @@
 @using VoeDl.Web.Components.Pages.HomeComponents
 @using Microsoft.Extensions.Logging
 @inject IJobManagerService JobManager
+@inject MediathekViewWebService MediathekViewWeb
 @inject IConfiguration Config
 @inject ISnackbar Snackbar
 @inject ILogger<Home> Logger
@@ -13,6 +14,69 @@
 <PageTitle>voe-dl</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Medium" Class="py-6">
+    <MudCard Elevation="2" Class="mb-4">
+        <MudCardContent>
+            <MudText Typo="Typo.h6">MediathekViewWeb-Suche</MudText>
+            <MudGrid>
+                <MudItem xs="12" md="8">
+                    <MudTextField T="string"
+                                  @bind-Value="_mediathekQuery"
+                                  Label="Suchbegriff"
+                                  Placeholder="z. B. 8 blickwink"
+                                  Lines="1"
+                                  Variant="Variant.Outlined"
+                                  FullWidth="true"
+                                  Class="mb-2" />
+                </MudItem>
+                <MudItem xs="12" md="4" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="@string.IsNullOrWhiteSpace(_mediathekQuery)"
+                               OnClick="SearchMediathek">
+                        Suche starten
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            <MudCheckBox T="bool" @bind-Checked="_mediathekEverywhere" Label="Überall suchen" />
+            @if (_mediathekIsLoading)
+            {
+                <MudProgressLinear Indeterminate="true" Class="my-2" />
+            }
+            @if (!string.IsNullOrWhiteSpace(_mediathekError))
+            {
+                <MudText Color="Color.Error">@_mediathekError</MudText>
+            }
+
+            @if (_mediathekResults.Count > 0)
+            {
+                <MudTable Items="_mediathekResults" Hover="true" Class="mt-3">
+                    <HeaderContent>
+                        <MudTh>Titel</MudTh>
+                        <MudTh>Kategorie</MudTh>
+                        <MudTh>Sender</MudTh>
+                        <MudTh>Veröffentlicht</MudTh>
+                        <MudTh>Aktion</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Titel">@context.Title</MudTd>
+                        <MudTd DataLabel="Kategorie">@context.Category</MudTd>
+                        <MudTd DataLabel="Sender">@context.Creator</MudTd>
+                        <MudTd DataLabel="Veröffentlicht">@context.PublishedAt?.ToLocalTime().ToString("yyyy-MM-dd")</MudTd>
+                        <MudTd>
+                            <MudButton Variant="Variant.Filled"
+                                       Size="Size.Small"
+                                       Color="Color.Primary"
+                                       OnClick="() => EnqueueMediathekResult(context.MediaUrl)">
+                                Download
+                            </MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudCardContent>
+    </MudCard>
+
     <DownloadInputCard
         RawUrls="@_model.RawUrls"
         RawUrlsChanged="OnRawUrlsChanged"
@@ -73,6 +137,11 @@
     private List<string> _duplicates = [];
     private List<string> _resolvedUrlsAwaitingConfirmation = [];
     private List<string> _deltaUrlsAwaitingConfirmation = [];
+    private string _mediathekQuery = string.Empty;
+    private bool _mediathekEverywhere = true;
+    private List<MediathekViewWebResult> _mediathekResults = [];
+    private bool _mediathekIsLoading;
+    private string? _mediathekError;
     private DateTimeOffset? _lastUpdated;
     private readonly HashSet<string> _notifiedTerminalJobs = [];
 
@@ -225,6 +294,36 @@
         _duplicates = [];
         _deltaUrlsAwaitingConfirmation = [];
         _resolvedUrlsAwaitingConfirmation = [];
+    }
+
+    private async Task SearchMediathek()
+    {
+        _mediathekError = null;
+        _mediathekResults = [];
+        _mediathekIsLoading = true;
+
+        try
+        {
+            var results = await MediathekViewWeb.SearchAsync(_mediathekQuery, _mediathekEverywhere);
+            _mediathekResults = [.. results];
+            if (_mediathekResults.Count == 0)
+                _mediathekError = "Keine Ergebnisse gefunden.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "MediathekViewWeb search failed: {ErrorMessage}", ex.Message);
+            _mediathekError = "Fehler bei der Mediathek-Suche. Bitte später erneut versuchen.";
+        }
+        finally
+        {
+            _mediathekIsLoading = false;
+        }
+    }
+
+    private void EnqueueMediathekResult(string url)
+    {
+        JobManager.Enqueue(url);
+        Snackbar.Add("MediathekViewWeb-Download gestartet.", Severity.Success);
     }
 
     private void EnqueueAll(List<string> urls)

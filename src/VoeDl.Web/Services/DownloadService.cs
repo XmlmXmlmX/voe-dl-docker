@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using System.Text.Json;
 using AngleSharp;
 using AngleSharp.Html.Dom;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace VoeDl.Web.Services;
 
@@ -79,17 +80,20 @@ public sealed class DownloadService
     private readonly HttpClient _http;
     private readonly HttpClient _downloadHttp;
     private readonly TmdbService _tmdb;
+    private readonly MediathekViewWebService _mediathek;
     private readonly ILogger<DownloadService> _logger;
     private readonly Random _rng = new();
 
     public DownloadService(
         IHttpClientFactory httpClientFactory,
         TmdbService tmdbService,
+        MediathekViewWebService mediathekViewWebService,
         ILogger<DownloadService> logger)
     {
         _http = httpClientFactory.CreateClient("voe");
         _downloadHttp = httpClientFactory.CreateClient("voe-download");
         _tmdb = tmdbService;
+        _mediathek = mediathekViewWebService;
         _logger = logger;
     }
 
@@ -103,6 +107,17 @@ public sealed class DownloadService
         CancellationToken cancellationToken = default)
     {
         var normalized = NormalizeUrl(inputUrl);
+
+        if (MediathekViewWebService.TryParseSearchInput(normalized, out var mediathekQuery, out var mediathekEverywhere))
+        {
+            logCallback?.Invoke($"[*] Resolving MediathekViewWeb search: {mediathekQuery}");
+            var searchResults = await _mediathek.SearchAsync(mediathekQuery, mediathekEverywhere, cancellationToken);
+            return searchResults
+                .Select(r => r.MediaUrl)
+                .Where(url => !string.IsNullOrWhiteSpace(url))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
 
         if (StoEpisodeRegex.IsMatch(normalized))
             return [normalized];
@@ -182,13 +197,33 @@ public sealed class DownloadService
         // Random delay to mimic human behaviour
         await Task.Delay(_rng.Next(MinDelayMs, MaxDelayMs), cancellationToken);
 
-        var (sourceUrl, mediaType, name, folderName) =
-            await ExtractSourceAsync(url, logCallback, cancellationToken);
+        string sourceUrl;
+        string mediaType;
+        string name;
+        string folderName;
 
-        if (sourceUrl is null)
+        if (TryParseDirectMediaUrl(url, out mediaType, out var directName))
         {
-            logCallback("[!] Could not find a downloadable URL.");
-            return 1;
+            sourceUrl = url;
+            name = string.IsNullOrWhiteSpace(directName)
+                ? MakeFolderName(url)
+                : MakeFolderName(directName);
+            folderName = string.Empty;
+            logCallback($"[*] Direct media URL detected: {sourceUrl}");
+        }
+        else
+        {
+            var extracted = await ExtractSourceAsync(url, logCallback, cancellationToken);
+            if (extracted.Url is null)
+            {
+                logCallback("[!] Could not find a downloadable URL.");
+                return 1;
+            }
+
+            sourceUrl = extracted.Url;
+            mediaType = extracted.MediaType;
+            name = extracted.Name;
+            folderName = extracted.FolderName;
         }
 
         var episodeContext = TryParseStoEpisodeContext(url);
@@ -409,6 +444,37 @@ public sealed class DownloadService
         if (trimmed.EndsWith('/'))
             trimmed = trimmed.TrimEnd('/');
         return trimmed;
+    }
+
+    private static bool TryParseDirectMediaUrl(string url, out string mediaType, out string fileName)
+    {
+        mediaType = string.Empty;
+        fileName = string.Empty;
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return false;
+
+        var extension = Path.GetExtension(uri.AbsolutePath);
+        if (string.IsNullOrWhiteSpace(extension))
+            return false;
+
+        if (extension.Equals(".m3u8", StringComparison.OrdinalIgnoreCase))
+        {
+            mediaType = "hls";
+            fileName = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
+            return true;
+        }
+
+        if (KnownVideoExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        {
+            mediaType = extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+                ? "mp4"
+                : extension.TrimStart('.').ToLowerInvariant();
+            fileName = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
+            return true;
+        }
+
+        return false;
     }
 
     private async Task<(string? Url, string MediaType, string Name, string FolderName)> ExtractSourceAsync(

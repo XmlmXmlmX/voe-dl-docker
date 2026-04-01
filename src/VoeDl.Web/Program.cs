@@ -51,6 +51,12 @@ builder.Services.AddHttpClient("voe-download", client =>
     client.Timeout = Timeout.InfiniteTimeSpan;
 });
 
+// Dedicated client for MediathekViewWeb RSS search.
+builder.Services.AddHttpClient("mediathek", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
 // TMDB API client – Bearer token is read from configuration.
 // If TheMovieDbApiAccessToken is empty/absent, TMDB lookups are skipped.
 builder.Services.AddHttpClient("tmdb", (sp, client) =>
@@ -72,6 +78,7 @@ if (!string.IsNullOrWhiteSpace(pgConnectionString))
 }
 
 builder.Services.AddSingleton<TmdbService>();
+builder.Services.AddSingleton<MediathekViewWebService>();
 builder.Services.AddSingleton<DownloadService>();
 builder.Services.AddSingleton<JobManagerService>();
 builder.Services.AddSingleton<IJobManagerService>(sp => sp.GetRequiredService<JobManagerService>());
