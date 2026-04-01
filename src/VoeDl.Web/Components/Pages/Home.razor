@@ -67,7 +67,7 @@
                             <MudButton Variant="Variant.Filled"
                                        Size="Size.Small"
                                        Color="Color.Primary"
-                                       OnClick="() => EnqueueMediathekResult(context.MediaUrl)">
+                                       OnClick="() => EnqueueMediathekResult(context.MediaUrl, context.Title)">
                                 Download
                             </MudButton>
                         </MudTd>
@@ -320,9 +320,9 @@
         }
     }
 
-    private void EnqueueMediathekResult(string url)
+    private void EnqueueMediathekResult(string url, string? title)
     {
-        JobManager.Enqueue(url);
+        JobManager.Enqueue(url, title);
         Snackbar.Add("MediathekViewWeb-Download gestartet.", Severity.Success);
     }
 

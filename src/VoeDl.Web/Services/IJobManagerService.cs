@@ -18,7 +18,7 @@ public interface IJobManagerService
     DownloadJob? GetJob(string id);
 
     /// <summary>Enqueues a new download job for <paramref name="url"/>.</summary>
-    DownloadJob Enqueue(string url);
+    DownloadJob Enqueue(string url, string? title = null);
 
     /// <summary>
     /// Resolves a user input URL to one or many concrete download URLs.

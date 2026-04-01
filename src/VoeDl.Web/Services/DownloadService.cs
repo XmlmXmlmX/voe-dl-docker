@@ -191,6 +191,7 @@ public sealed class DownloadService
         string url,
         string downloadDir,
         string? seriesDownloadDir,
+        string? overrideTitle,
         Action<string> logCallback,
         CancellationToken cancellationToken = default)
     {
@@ -208,7 +209,7 @@ public sealed class DownloadService
             name = string.IsNullOrWhiteSpace(directName)
                 ? MakeFolderName(url)
                 : MakeFolderName(directName);
-            folderName = string.Empty;
+            folderName = directName ?? string.Empty;
             logCallback($"[*] Direct media URL detected: {sourceUrl}");
         }
         else
@@ -224,6 +225,12 @@ public sealed class DownloadService
             mediaType = extracted.MediaType;
             name = extracted.Name;
             folderName = extracted.FolderName;
+        }
+
+        if (!string.IsNullOrWhiteSpace(overrideTitle))
+        {
+            name = overrideTitle.Trim();
+            folderName = name;
         }
 
         var episodeContext = TryParseStoEpisodeContext(url);

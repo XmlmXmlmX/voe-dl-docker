@@ -1,6 +1,7 @@
 using Bunit;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using MudBlazor.Services;
 using NSubstitute;
 using VoeDl.Web.Components.Pages;
@@ -35,6 +36,11 @@ public sealed class HomePageTests : TestContext
                 IReadOnlyList<string> resolved = [input];
                 return Task.FromResult(resolved);
             });
+
+        var httpClientFactory = Substitute.For<IHttpClientFactory>();
+        httpClientFactory.CreateClient(Arg.Any<string>()).Returns(new HttpClient());
+        Services.AddSingleton(httpClientFactory);
+        Services.AddSingleton(new MediathekViewWebService(httpClientFactory, Substitute.For<ILogger<MediathekViewWebService>>()));
 
         Services.AddSingleton(_jobManager);
         Services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());

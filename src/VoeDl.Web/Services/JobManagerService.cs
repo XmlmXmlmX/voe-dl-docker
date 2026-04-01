@@ -150,11 +150,11 @@ public sealed class JobManagerService : IJobManagerService
     /// Enqueues a new download job for <paramref name="url"/> and starts it
     /// immediately on a background thread.
     /// </summary>
-    public DownloadJob Enqueue(string url)
+    public DownloadJob Enqueue(string url, string? title = null)
     {
-        var job = new DownloadJob { Url = url };
+        var job = new DownloadJob { Url = url, Title = title };
         _jobs[job.Id] = job;
-        _logger.LogInformation("Enqueued download job {JobId} for URL {Url}", job.Id, url);
+        _logger.LogInformation("Enqueued download job {JobId} for URL {Url} (Title: {Title})", job.Id, url, title ?? "(none)");
         NotifyChanged();
 
         _ = Task.Run(() => RunJobAsync(job));
@@ -315,6 +315,7 @@ public sealed class JobManagerService : IJobManagerService
                 job.Url,
                 _downloadDir,
                 _seriesDownloadDir,
+                job.Title,
                 line =>
                 {
                     job.Logs += line + "\n";
