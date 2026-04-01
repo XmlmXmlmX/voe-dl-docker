@@ -243,6 +243,9 @@ public sealed class DownloadService
             logCallback($"[*] Routed download to series directory: {outputDir}");
         }
 
+        if (!Directory.Exists(outputDir))
+            Directory.CreateDirectory(outputDir);
+
         if (resolvedMetadata is not null)
             logCallback($"[+] TMDB: matched \"{resolvedMetadata.Title}\" ({resolvedMetadata.Kind}, id={resolvedMetadata.TmdbId})");
         else
