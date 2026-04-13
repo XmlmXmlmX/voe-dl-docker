@@ -64,12 +64,32 @@
                         <MudTd DataLabel="Sender">@context.Creator</MudTd>
                         <MudTd DataLabel="Veröffentlicht">@context.PublishedAt?.ToLocalTime().ToString("yyyy-MM-dd")</MudTd>
                         <MudTd>
-                            <MudButton Variant="Variant.Filled"
-                                       Size="Size.Small"
-                                       Color="Color.Primary"
-                                       OnClick="() => EnqueueMediathekResult(context.MediaUrl, context.Title)">
-                                Download
-                            </MudButton>
+                            <MudStack Row="true" Spacing="1">
+                                <MudButton Variant="Variant.Filled"
+                                           Size="Size.Small"
+                                           Color="Color.Primary"
+                                           OnClick="() => EnqueueMediathekResult(context.MediaUrl, context.Title, context.Category, DownloadCategory.Auto)">
+                                    Auto
+                                </MudButton>
+                                <MudButton Variant="Variant.Filled"
+                                           Size="Size.Small"
+                                           Color="Color.Secondary"
+                                           OnClick="() => EnqueueMediathekResult(context.MediaUrl, context.Title, context.Category, DownloadCategory.Movie)">
+                                    Film
+                                </MudButton>
+                                <MudButton Variant="Variant.Filled"
+                                           Size="Size.Small"
+                                           Color="Color.Info"
+                                           OnClick="() => EnqueueMediathekResult(context.MediaUrl, context.Title, context.Category, DownloadCategory.Series)">
+                                    Serie
+                                </MudButton>
+                                <MudButton Variant="Variant.Filled"
+                                           Size="Size.Small"
+                                           Color="Color.Warning"
+                                           OnClick="() => EnqueueMediathekResult(context.MediaUrl, context.Title, context.Category, DownloadCategory.Documentary)">
+                                    Doku
+                                </MudButton>
+                            </MudStack>
                         </MudTd>
                     </RowTemplate>
                 </MudTable>
@@ -216,8 +236,11 @@
         }
     }
 
-    private async Task StartDownloads()
+    private DownloadCategory _pendingDownloadCategory = DownloadCategory.Auto;
+
+    private async Task StartDownloads(DownloadCategory category)
     {
+        _pendingDownloadCategory = category;
         var inputUrls = ParseUrls(_model.RawUrls);
         if (inputUrls.Count == 0) return;
 
@@ -247,7 +270,7 @@
             }
 
             _deltaUrlsAwaitingConfirmation = [];
-            EnqueueAll(urls);
+            EnqueueAll(urls, category);
             Snackbar.Add($"{urls.Count} Download(s) gestartet.", Severity.Success);
             Logger.LogInformation("Enqueued {UrlCount} downloads", urls.Count);
         }
@@ -267,7 +290,7 @@
         _duplicates = [];
         _deltaUrlsAwaitingConfirmation = [];
         _resolvedUrlsAwaitingConfirmation = [];
-        EnqueueAll(urls);
+        EnqueueAll(urls, _pendingDownloadCategory);
     }
 
     private void DownloadDelta()
@@ -286,7 +309,7 @@
             return;
         }
 
-        EnqueueAll(delta);
+        EnqueueAll(delta, _pendingDownloadCategory);
     }
 
     private void ClearDuplicateWarning()
@@ -320,16 +343,23 @@
         }
     }
 
-    private void EnqueueMediathekResult(string url, string? title)
+    private void EnqueueMediathekResult(string url, string? title, string? category, DownloadCategory downloadCategory)
     {
-        JobManager.Enqueue(url, title);
-        Snackbar.Add("MediathekViewWeb-Download gestartet.", Severity.Success);
+        // If manually downloading as series and we have a category, use it as series name
+        if (downloadCategory == DownloadCategory.Series && !string.IsNullOrWhiteSpace(category))
+        {
+            // Override title to include series name from category
+            title = $"{category} - {title}";
+        }
+
+        JobManager.Enqueue(url, title, downloadCategory);
+        Snackbar.Add($"{downloadCategory}-Download gestartet.", Severity.Success);
     }
 
-    private void EnqueueAll(List<string> urls)
+    private void EnqueueAll(List<string> urls, DownloadCategory category = DownloadCategory.Auto)
     {
         foreach (var url in urls)
-            JobManager.Enqueue(url);
+            JobManager.Enqueue(url, category: category);
         _model.RawUrls = string.Empty;
         _duplicates = [];
     }

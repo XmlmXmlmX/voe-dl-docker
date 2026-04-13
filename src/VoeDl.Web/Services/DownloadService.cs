@@ -192,6 +192,7 @@ public sealed class DownloadService
         string downloadDir,
         string? seriesDownloadDir,
         string? overrideTitle,
+        Models.DownloadCategory category,
         Action<string> logCallback,
         CancellationToken cancellationToken = default)
     {
@@ -244,45 +245,124 @@ public sealed class DownloadService
         var tmdbLookupTitle = name;
         var baseName = $"{SanitizeFilename(name)}_SS";
 
-        if (episodeContext is not null)
-        {
-            var seriesDirName = SanitizePath(episodeContext.SeriesName);
-            var seriesRootDir = Path.Combine(resolvedSeriesRoot, seriesDirName);
-            var seasonDir = $"Season {episodeContext.Season:00}";
-            outputDir = Path.Combine(seriesRootDir, seasonDir);
-            logCallback($"[*] URL identified as series episode, using series directory: {outputDir}");
+        // Check manual category override first
+        bool forceSeries = category == Models.DownloadCategory.Series;
+        bool forceMovie = category == Models.DownloadCategory.Movie;
+        bool forceDocumentary = category == Models.DownloadCategory.Documentary;
 
-            baseName = SanitizeFilename(
-                $"{episodeContext.SeriesName} S{episodeContext.Season:00}E{episodeContext.Episode:00}");
-            name = episodeContext.SeriesName;
-            tmdbLookupTitle = $"{episodeContext.SeriesName} S{episodeContext.Season:00}E{episodeContext.Episode:00}";
+        if (forceSeries || episodeContext is not null)
+        {
+            string seriesName;
+            int? season = null;
+            int? episode = null;
+
+            if (episodeContext is not null)
+            {
+                seriesName = episodeContext.SeriesName;
+                season = episodeContext.Season;
+                episode = episodeContext.Episode;
+            }
+            else if (forceSeries)
+            {
+                seriesName = ExtractSeriesNameFromTitle(name);
+                var seasonEpisode = TryExtractSeasonEpisodeFromTitle(name);
+                if (seasonEpisode != null)
+                {
+                    season = seasonEpisode.Season;
+                    episode = seasonEpisode.Episode;
+                }
+            }
+            else
+            {
+                seriesName = name;
+            }
+
+            var seriesDirName = SanitizePath(seriesName);
+            var seriesRootDir = Path.Combine(resolvedSeriesRoot, seriesDirName);
+            var seasonDir = season.HasValue
+                ? $"Season {season.Value:00}"
+                : "Season 01";
+            outputDir = Path.Combine(seriesRootDir, seasonDir);
+
+            if (forceSeries)
+                logCallback($"[*] Manual category override: forcing series directory: {outputDir}");
+            else
+                logCallback($"[*] URL identified as series episode, using series directory: {outputDir}");
+
+            if (episodeContext is not null)
+            {
+                baseName = SanitizeFilename(
+                    $"{episodeContext.SeriesName} S{episodeContext.Season:00}E{episodeContext.Episode:00}");
+                name = episodeContext.SeriesName;
+                tmdbLookupTitle = $"{episodeContext.SeriesName} S{episodeContext.Season:00}E{episodeContext.Episode:00}";
+            }
+            else if (forceSeries && season.HasValue && episode.HasValue)
+            {
+                baseName = SanitizeFilename(
+                    $"{seriesName} S{season.Value:00}E{episode.Value:00}");
+                name = seriesName;
+                tmdbLookupTitle = $"{seriesName} S{season.Value:00}E{episode.Value:00}";
+            }
         }
-        else
+        else if (forceMovie || forceDocumentary)
         {
             outputDir = (createSubfolder && !string.IsNullOrWhiteSpace(folderName))
                 ? Path.Combine(downloadDir, SanitizePath(folderName))
                 : downloadDir;
+
+            if (forceMovie)
+                logCallback($"[*] Manual category override: forcing movie directory: {outputDir}");
+            else if (forceDocumentary)
+                logCallback($"[*] Manual category override: forcing documentary directory: {outputDir}");
+        }
+        else
+        {
+            // Auto detection logic
+            if (episodeContext is not null)
+            {
+                var seriesDirName = SanitizePath(episodeContext.SeriesName);
+                var seriesRootDir = Path.Combine(resolvedSeriesRoot, seriesDirName);
+                var seasonDir = $"Season {episodeContext.Season:00}";
+                outputDir = Path.Combine(seriesRootDir, seasonDir);
+                logCallback($"[*] URL identified as series episode, using series directory: {outputDir}");
+
+                baseName = SanitizeFilename(
+                    $"{episodeContext.SeriesName} S{episodeContext.Season:00}E{episodeContext.Episode:00}");
+                name = episodeContext.SeriesName;
+                tmdbLookupTitle = $"{episodeContext.SeriesName} S{episodeContext.Season:00}E{episodeContext.Episode:00}";
+            }
+            else
+            {
+                outputDir = (createSubfolder && !string.IsNullOrWhiteSpace(folderName))
+                    ? Path.Combine(downloadDir, SanitizePath(folderName))
+                    : downloadDir;
+            }
         }
 
         Directory.CreateDirectory(outputDir);
 
-        Models.TmdbMetadata? resolvedMetadata = await _tmdb.LookupAsync(tmdbLookupTitle, cancellationToken);
-        if (episodeContext is null &&
-            resolvedMetadata?.Kind == Models.TmdbMediaKind.TvEpisode &&
-            !string.IsNullOrWhiteSpace(seriesDownloadDir))
+        // Only do TMDB lookup if category is Auto
+        Models.TmdbMetadata? resolvedMetadata = null;
+        if (category == Models.DownloadCategory.Auto)
         {
-            var seriesName = resolvedMetadata.ShowTitle ?? resolvedMetadata.Title;
-            var seriesDirName = SanitizePath(seriesName);
-            var seasonDir = $"Season {(resolvedMetadata.SeasonNumber ?? 1):00}";
-            outputDir = Path.Combine(resolvedSeriesRoot, seriesDirName, seasonDir);
-
-            if (resolvedMetadata.SeasonNumber.HasValue && resolvedMetadata.EpisodeNumber.HasValue)
+            resolvedMetadata = await _tmdb.LookupAsync(tmdbLookupTitle, cancellationToken);
+            if (episodeContext is null &&
+                resolvedMetadata?.Kind == Models.TmdbMediaKind.TvEpisode &&
+                !string.IsNullOrWhiteSpace(seriesDownloadDir))
             {
-                baseName = SanitizeFilename(
-                    $"{seriesName} S{resolvedMetadata.SeasonNumber.Value:00}E{resolvedMetadata.EpisodeNumber.Value:00}");
-            }
+                var seriesName = resolvedMetadata.ShowTitle ?? resolvedMetadata.Title;
+                var seriesDirName = SanitizePath(seriesName);
+                var seasonDir = $"Season {(resolvedMetadata.SeasonNumber ?? 1):00}";
+                outputDir = Path.Combine(resolvedSeriesRoot, seriesDirName, seasonDir);
 
-            logCallback($"[*] Routed download to series directory: {outputDir}");
+                if (resolvedMetadata.SeasonNumber.HasValue && resolvedMetadata.EpisodeNumber.HasValue)
+                {
+                    baseName = SanitizeFilename(
+                        $"{seriesName} S{resolvedMetadata.SeasonNumber.Value:00}E{resolvedMetadata.EpisodeNumber.Value:00}");
+                }
+
+                logCallback($"[*] Routed download to series directory: {outputDir}");
+            }
         }
 
         if (!Directory.Exists(outputDir))
@@ -434,6 +514,59 @@ public sealed class DownloadService
         var slug = match.Groups["slug"].Value;
         var seriesName = SlugToTitle(slug);
         return new EpisodeContext(seriesName, season, episode);
+    }
+
+    private sealed class SeasonEpisode
+    {
+        public int Season { get; }
+        public int Episode { get; }
+
+        public SeasonEpisode(int season, int episode)
+        {
+            Season = season;
+            Episode = episode;
+        }
+    }
+
+    private static string ExtractSeriesNameFromTitle(string title)
+    {
+        // Check if title is already in "SeriesName - EpisodeTitle" format from Mediathek
+        var dashIndex = title.IndexOf(" - ");
+        if (dashIndex > 0)
+        {
+            return title[..dashIndex].Trim();
+        }
+
+        // Fallback: Remove everything after the first opening parenthesis or bracket
+        var index = title.IndexOfAny(['(', '[']);
+        if (index > 0)
+            return title[..index].Trim();
+        return title.Trim();
+    }
+
+    private static SeasonEpisode? TryExtractSeasonEpisodeFromTitle(string title)
+    {
+        // Look for patterns like (S04_E07), [S04E07], S04E07, etc.
+        var patterns = new[]
+        {
+            @"[(\[]S(?<season>\d+)[_\-\.]?E(?<episode>\d+)[)\]]",  // (S04_E07), [S04E07]
+            @"S(?<season>\d+)[_\-\.]?E(?<episode>\d+)",              // S04_E07, S04E07
+            @"Staffel\s*(?<season>\d+).*?Episode\s*(?<episode>\d+)", // Staffel 4 Episode 7
+            @"Season\s*(?<season>\d+).*?Episode\s*(?<episode>\d+)"   // Season 4 Episode 7
+        };
+
+        foreach (var pattern in patterns)
+        {
+            var match = Regex.Match(title, pattern, RegexOptions.IgnoreCase);
+            if (match.Success &&
+                int.TryParse(match.Groups["season"].Value, out var season) &&
+                int.TryParse(match.Groups["episode"].Value, out var episode))
+            {
+                return new SeasonEpisode(season, episode);
+            }
+        }
+
+        return null;
     }
 
     private static string SlugToTitle(string slug)
@@ -1110,7 +1243,7 @@ public sealed class DownloadService
     }
 
     private static string SanitizePath(string path) =>
-        string.Join("_", path.Split(Path.GetInvalidPathChars()));
+        string.Join("_", path.Split(Path.GetInvalidPathChars())).Replace("/", "_");
 
     private static bool ShouldCreateSubfolder()
     {

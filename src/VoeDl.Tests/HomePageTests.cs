@@ -18,7 +18,7 @@ namespace VoeDl.Tests;
 /// </summary>
 public sealed class HomePageTests : TestContext
 {
-    private const string DownloadButtonText = "Download starten";
+    private const string DownloadButtonText = "Download (automatisch)";
     private readonly IJobManagerService _jobManager;
 
     public HomePageTests()

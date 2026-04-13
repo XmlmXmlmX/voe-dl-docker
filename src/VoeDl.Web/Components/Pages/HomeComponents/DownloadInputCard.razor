@@ -1,5 +1,6 @@
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
+@using VoeDl.Web.Models
 
 <MudCard Elevation="2" Class="mb-4">
     <MudCardContent>
@@ -34,12 +35,32 @@
         }
         else
         {
-            <MudButton Variant="Variant.Filled"
-                       Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Download"
-                       OnClick="OnStartDownloads">
-                Download starten
-            </MudButton>
+            <MudStack Row="true" Class="mb-2" Spacing="1">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Download"
+                           OnClick="() => OnStartDownloads.InvokeAsync(DownloadCategory.Auto)">
+                    Download (automatisch)
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Secondary"
+                           StartIcon="@Icons.Material.Filled.Movie"
+                           OnClick="() => OnStartDownloads.InvokeAsync(DownloadCategory.Movie)">
+                    Download as Movie
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Info"
+                           StartIcon="@Icons.Material.Filled.Tv"
+                           OnClick="() => OnStartDownloads.InvokeAsync(DownloadCategory.Series)">
+                    Download as Series
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Warning"
+                           StartIcon="@Icons.Material.Filled.Article"
+                           OnClick="() => OnStartDownloads.InvokeAsync(DownloadCategory.Documentary)">
+                    Download as Doku
+                </MudButton>
+            </MudStack>
         }
     </MudCardContent>
 </MudCard>
@@ -55,7 +76,7 @@
     public IReadOnlyList<string> Duplicates { get; set; } = [];
 
     [Parameter]
-    public EventCallback OnStartDownloads { get; set; }
+    public EventCallback<DownloadCategory> OnStartDownloads { get; set; }
 
     [Parameter]
     public EventCallback OnForceDownload { get; set; }
