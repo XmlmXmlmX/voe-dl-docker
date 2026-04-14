@@ -31,6 +31,7 @@ public sealed class JobManagerService : IJobManagerService
 
     private readonly string _downloadDir;
     private readonly string _seriesDownloadDir;
+    private readonly string _documentaryDownloadDir;
     private readonly string _historyFile;
     private readonly SemaphoreSlim _historyLock = new(1, 1);
     private readonly SemaphoreSlim _downloadSlots;
@@ -66,6 +67,12 @@ public sealed class JobManagerService : IJobManagerService
             Environment.GetEnvironmentVariable("TV_DOWNLOAD_DIR"),
             Environment.GetEnvironmentVariable("DOWNLOAD_DIR_TV"));
         
+        string? rawDocumentaryDir = FirstMeaningfulDirectoryValue(
+            configuration["DOCUMENTARY_DOWNLOAD_DIR"],
+            configuration["DOWNLOAD_DIR_DOCUMENTARY"],
+            Environment.GetEnvironmentVariable("DOCUMENTARY_DOWNLOAD_DIR"),
+            Environment.GetEnvironmentVariable("DOWNLOAD_DIR_DOCUMENTARY"));
+        
         _logger.LogInformation("Download directory resolution (first match wins):");
         _logger.LogInformation("  Config[DOWNLOAD_DIR] = {ConfigDownloadDir}", configuration["DOWNLOAD_DIR"] ?? "(null)");
         _logger.LogInformation("  Config[DOWNLOAD_PATH] = {ConfigDownloadPath}", configuration["DOWNLOAD_PATH"] ?? "(null)");
@@ -81,6 +88,11 @@ public sealed class JobManagerService : IJobManagerService
         _logger.LogInformation("  Env[TV_DOWNLOAD_DIR] = {EnvTvDownloadDir}", Environment.GetEnvironmentVariable("TV_DOWNLOAD_DIR") ?? "(null)");
         _logger.LogInformation("  Env[DOWNLOAD_DIR_TV] = {EnvDownloadDirTv}", Environment.GetEnvironmentVariable("DOWNLOAD_DIR_TV") ?? "(null)");
         _logger.LogInformation("  => Using series dir: {ResolvedSeriesDir}", rawSeriesDir ?? rawDir);
+        _logger.LogInformation("  Config[DOCUMENTARY_DOWNLOAD_DIR] = {ConfigDocumentaryDir}", configuration["DOCUMENTARY_DOWNLOAD_DIR"] ?? "(null)");
+        _logger.LogInformation("  Config[DOWNLOAD_DIR_DOCUMENTARY] = {ConfigDownloadDirDocumentary}", configuration["DOWNLOAD_DIR_DOCUMENTARY"] ?? "(null)");
+        _logger.LogInformation("  Env[DOCUMENTARY_DOWNLOAD_DIR] = {EnvDocumentaryDir}", Environment.GetEnvironmentVariable("DOCUMENTARY_DOWNLOAD_DIR") ?? "(null)");
+        _logger.LogInformation("  Env[DOWNLOAD_DIR_DOCUMENTARY] = {EnvDownloadDirDocumentary}", Environment.GetEnvironmentVariable("DOWNLOAD_DIR_DOCUMENTARY") ?? "(null)");
+        _logger.LogInformation("  => Using documentary dir: {ResolvedDocumentaryDir}", rawDocumentaryDir ?? rawDir);
 
         _maxConcurrentDownloads = ParseMaxConcurrentDownloads(configuration);
         _downloadSlots = new SemaphoreSlim(_maxConcurrentDownloads, _maxConcurrentDownloads);
@@ -93,10 +105,15 @@ public sealed class JobManagerService : IJobManagerService
         _seriesDownloadDir = string.IsNullOrWhiteSpace(rawSeriesDir)
             ? _downloadDir
             : (Path.IsPathRooted(rawSeriesDir) ? rawSeriesDir : Path.GetFullPath(rawSeriesDir));
+        _documentaryDownloadDir = string.IsNullOrWhiteSpace(rawDocumentaryDir)
+            ? _downloadDir
+            : (Path.IsPathRooted(rawDocumentaryDir) ? rawDocumentaryDir : Path.GetFullPath(rawDocumentaryDir));
         _logger.LogInformation("Final download directory (absolute path): {FinalDownloadDir}", _downloadDir);
         _logger.LogInformation("Final series directory (absolute path): {FinalSeriesDownloadDir}", _seriesDownloadDir);
+        _logger.LogInformation("Final documentary directory (absolute path): {FinalDocumentaryDownloadDir}", _documentaryDownloadDir);
         CreateDirectoryWithUnixPermissions(_downloadDir);
         CreateDirectoryWithUnixPermissions(_seriesDownloadDir);
+        CreateDirectoryWithUnixPermissions(_documentaryDownloadDir);
         _historyFile = Path.Combine(_downloadDir, "downloaded_urls.txt");
         _logger.LogInformation("Download history file: {HistoryFile}", _historyFile);
     }
@@ -316,6 +333,7 @@ public sealed class JobManagerService : IJobManagerService
                 job.Url,
                 _downloadDir,
                 _seriesDownloadDir,
+                _documentaryDownloadDir,
                 job.Title,
                 job.Category,
                 line =>

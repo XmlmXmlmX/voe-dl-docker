@@ -192,6 +192,7 @@ public sealed class DownloadService
         string url,
         string downloadDir,
         string? seriesDownloadDir,
+        string? documentaryDownloadDir,
         string? overrideTitle,
         Models.DownloadCategory category,
         Action<string> logCallback,
@@ -307,9 +308,13 @@ public sealed class DownloadService
         }
         else if (forceMovie || forceDocumentary)
         {
+            string resolvedDocumentaryRoot = string.IsNullOrWhiteSpace(documentaryDownloadDir)
+                ? downloadDir
+                : documentaryDownloadDir;
+
             outputDir = (createSubfolder && !string.IsNullOrWhiteSpace(folderName))
-                ? Path.Combine(downloadDir, SanitizePath(folderName))
-                : downloadDir;
+                ? Path.Combine(resolvedDocumentaryRoot, SanitizePath(folderName))
+                : resolvedDocumentaryRoot;
 
             if (forceMovie)
                 logCallback($"[*] Manual category override: forcing movie directory: {outputDir}");
