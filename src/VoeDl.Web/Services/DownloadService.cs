@@ -575,8 +575,9 @@ public sealed class DownloadService
         // Look for patterns like (S04_E07), [S04E07], S04E07, etc.
         var patterns = new[]
         {
-            @"[(\[]S(?<season>\d+)[_\-\.]?E(?<episode>\d+)[)\]]",  // (S04_E07), [S04E07]
-            @"S(?<season>\d+)[_\-\.]?E(?<episode>\d+)",              // S04_E07, S04E07
+            @"\(S(?<season>\d+)_E(?<episode>\d+)\)",                // (S04_E07) - spezifisch für Klammern
+            @"[(\[]S(?<season>\d+)[_\-\.]*E(?<episode>\d+)[)\]]",   // (S04_E07), [S04E07], (S04E07) - mehr Trennzeichen
+            @"S(?<season>\d+)[_\-\.]*E(?<episode>\d+)",              // S04_E07, S04E07
             @"Staffel\s*(?<season>\d+).*?Episode\s*(?<episode>\d+)", // Staffel 4 Episode 7
             @"Season\s*(?<season>\d+).*?Episode\s*(?<episode>\d+)"   // Season 4 Episode 7
         };
