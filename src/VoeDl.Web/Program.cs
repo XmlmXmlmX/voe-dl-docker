@@ -203,10 +203,11 @@ void SetUnixFilePermissions(string path)
     {
         try
         {
-            // Set permissions to 0o770 (rwxrwx---) for user and group
+            // Set permissions to 0o777 (rwxrwxrwx) for user, group, and other
             File.SetUnixFileMode(path,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-                UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute);
+                UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute);
         }
         catch (Exception ex)
         {
