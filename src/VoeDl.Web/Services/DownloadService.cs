@@ -306,7 +306,15 @@ public sealed class DownloadService
                 tmdbLookupTitle = $"{seriesName} S{season.Value:00}E{episode.Value:00}";
             }
         }
-        else if (forceMovie || forceDocumentary)
+        else if (forceMovie)
+        {
+            outputDir = (createSubfolder && !string.IsNullOrWhiteSpace(folderName))
+                ? Path.Combine(downloadDir, SanitizePath(folderName))
+                : downloadDir;
+
+            logCallback($"[*] Manual category override: forcing movie directory: {outputDir}");
+        }
+        else if (forceDocumentary)
         {
             string resolvedDocumentaryRoot = string.IsNullOrWhiteSpace(documentaryDownloadDir)
                 ? downloadDir
@@ -316,10 +324,7 @@ public sealed class DownloadService
                 ? Path.Combine(resolvedDocumentaryRoot, SanitizePath(folderName))
                 : resolvedDocumentaryRoot;
 
-            if (forceMovie)
-                logCallback($"[*] Manual category override: forcing movie directory: {outputDir}");
-            else if (forceDocumentary)
-                logCallback($"[*] Manual category override: forcing documentary directory: {outputDir}");
+            logCallback($"[*] Manual category override: forcing documentary directory: {outputDir}");
         }
         else
         {
