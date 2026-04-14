@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -167,7 +168,7 @@ public sealed class TmdbService
             ImdbId = imdbId,
         };
 
-        Directory.CreateDirectory(seriesDirectory);
+        CreateDirectoryWithUnixPermissions(seriesDirectory);
         var nfoPath = Path.Combine(seriesDirectory, "tvshow.nfo");
         var doc = BuildTvShowNfo(seriesMeta);
 
@@ -589,4 +590,28 @@ public sealed class TmdbService
 
     private static int? TryParseYear(string? date) =>
         date?.Length >= 4 && int.TryParse(date.AsSpan(0, 4), out int y) ? y : null;
+
+    private static void CreateDirectoryWithUnixPermissions(string path)
+    {
+        Directory.CreateDirectory(path);
+        SetUnixFilePermissions(path);
+    }
+
+    private static void SetUnixFilePermissions(string path)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            try
+            {
+                // Set permissions to 0o770 (rwxrwx---) for user and group
+                File.SetUnixFileMode(path,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                    UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Warning: Could not set Unix file mode for {path}: {ex.Message}");
+            }
+        }
+    }
 }

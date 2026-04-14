@@ -7,6 +7,7 @@ using VoeDl.Web.Components;
 using VoeDl.Web.Data;
 using VoeDl.Web.Services;
 using System.IO;
+using System.Runtime.InteropServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -92,7 +93,7 @@ var dataProtectionBuilder = builder.Services
 var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
 if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
 {
-    Directory.CreateDirectory(dataProtectionKeysPath);
+    CreateDirectoryWithUnixPermissions(dataProtectionKeysPath);
     dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
 }
 
@@ -188,3 +189,28 @@ startupLogger.LogInformation("--- End Diagnostics ---");
 startupLogger.LogInformation("Application started successfully. Listening on http://[::]:8080");
 
 app.Run();
+
+// Helper functions for Unix file permissions
+void CreateDirectoryWithUnixPermissions(string path)
+{
+    Directory.CreateDirectory(path);
+    SetUnixFilePermissions(path);
+}
+
+void SetUnixFilePermissions(string path)
+{
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+    {
+        try
+        {
+            // Set permissions to 0o770 (rwxrwx---) for user and group
+            File.SetUnixFileMode(path,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Warning: Could not set Unix file mode for {path}: {ex.Message}");
+        }
+    }
+}

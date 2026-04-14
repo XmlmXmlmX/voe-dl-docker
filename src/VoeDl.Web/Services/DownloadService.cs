@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Json;
+using System.Runtime.InteropServices;
 using AngleSharp;
 using AngleSharp.Html.Dom;
 using Microsoft.AspNetCore.WebUtilities;
@@ -339,7 +340,7 @@ public sealed class DownloadService
             }
         }
 
-        Directory.CreateDirectory(outputDir);
+        CreateDirectoryWithUnixPermissions(outputDir);
 
         // Only do TMDB lookup if category is Auto
         Models.TmdbMetadata? resolvedMetadata = null;
@@ -366,7 +367,7 @@ public sealed class DownloadService
         }
 
         if (!Directory.Exists(outputDir))
-            Directory.CreateDirectory(outputDir);
+            CreateDirectoryWithUnixPermissions(outputDir);
 
         if (resolvedMetadata is not null)
             logCallback($"[+] TMDB: matched \"{resolvedMetadata.Title}\" ({resolvedMetadata.Kind}, id={resolvedMetadata.TmdbId})");
@@ -514,6 +515,31 @@ public sealed class DownloadService
         var slug = match.Groups["slug"].Value;
         var seriesName = SlugToTitle(slug);
         return new EpisodeContext(seriesName, season, episode);
+    }
+
+    private static void CreateDirectoryWithUnixPermissions(string path)
+    {
+        Directory.CreateDirectory(path);
+        SetUnixFilePermissions(path);
+    }
+
+    private static void SetUnixFilePermissions(string path)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            try
+            {
+                // Set permissions to 0o770 (rwxrwx---) for user and group
+                File.SetUnixFileMode(path,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                    UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute);
+            }
+            catch (Exception ex)
+            {
+                // Log warning but don't fail - permissions might be set by container
+                System.Diagnostics.Debug.WriteLine($"Warning: Could not set Unix file mode for {path}: {ex.Message}");
+            }
+        }
     }
 
     private sealed class SeasonEpisode
@@ -1413,6 +1439,7 @@ public sealed class DownloadService
         {
             string path = Path.Combine(Path.GetTempPath(), $"debug_page_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.html");
             File.WriteAllText(path, html, Encoding.UTF8);
+            SetUnixFilePermissions(path);
             log($"[*] Page content saved for debugging: {path}");
         }
         catch (Exception ex)

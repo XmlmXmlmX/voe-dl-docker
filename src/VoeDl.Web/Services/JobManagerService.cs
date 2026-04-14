@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using VoeDl.Web.Data;
@@ -94,8 +95,8 @@ public sealed class JobManagerService : IJobManagerService
             : (Path.IsPathRooted(rawSeriesDir) ? rawSeriesDir : Path.GetFullPath(rawSeriesDir));
         _logger.LogInformation("Final download directory (absolute path): {FinalDownloadDir}", _downloadDir);
         _logger.LogInformation("Final series directory (absolute path): {FinalSeriesDownloadDir}", _seriesDownloadDir);
-        Directory.CreateDirectory(_downloadDir);
-        Directory.CreateDirectory(_seriesDownloadDir);
+        CreateDirectoryWithUnixPermissions(_downloadDir);
+        CreateDirectoryWithUnixPermissions(_seriesDownloadDir);
         _historyFile = Path.Combine(_downloadDir, "downloaded_urls.txt");
         _logger.LogInformation("Download history file: {HistoryFile}", _historyFile);
     }
@@ -432,5 +433,29 @@ public sealed class JobManagerService : IJobManagerService
             return 3;
 
         return Math.Min(value, 20);
+    }
+
+    private void CreateDirectoryWithUnixPermissions(string path)
+    {
+        Directory.CreateDirectory(path);
+        SetUnixFilePermissions(path);
+    }
+
+    private void SetUnixFilePermissions(string path)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            try
+            {
+                // Set permissions to 0o770 (rwxrwx---) for user and group
+                File.SetUnixFileMode(path,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                    UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Could not set Unix file mode for {Path}: {Message}", path, ex.Message);
+            }
+        }
     }
 }
