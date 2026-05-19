@@ -1224,6 +1224,7 @@ public sealed class DownloadService
                 "--retries", "3",
                 "--fragment-retries", "3",
                 "--no-part",
+                "--skip-unavailable",
             },
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -1250,18 +1251,30 @@ public sealed class DownloadService
         Action<string> log)
     {
         var cookieFile = Environment.GetEnvironmentVariable("YT_DLP_COOKIES");
-        if (string.IsNullOrWhiteSpace(cookieFile))
-            return;
-
-        if (!File.Exists(cookieFile))
+        if (!string.IsNullOrWhiteSpace(cookieFile))
         {
-            log($"[!] YT_DLP_COOKIES is set to '{cookieFile}' but the file does not exist.");
+            if (File.Exists(cookieFile))
+            {
+                psi.ArgumentList.Add("--cookies");
+                psi.ArgumentList.Add(cookieFile);
+                log($"[*] Using yt-dlp cookies file: {cookieFile}");
+            }
+            else
+            {
+                log($"[!] YT_DLP_COOKIES is set to '{cookieFile}' but the file does not exist.");
+            }
             return;
         }
 
-        psi.ArgumentList.Add("--cookies");
-        psi.ArgumentList.Add(cookieFile);
-        log($"[*] Using yt-dlp cookies file: {cookieFile}");
+        var useBrowserCookies = Environment.GetEnvironmentVariable("YT_DLP_COOKIES_FROM_BROWSER");
+        if (!string.IsNullOrWhiteSpace(useBrowserCookies) && 
+            (useBrowserCookies.Equals("1", StringComparison.OrdinalIgnoreCase) ||
+             useBrowserCookies.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+             useBrowserCookies.Equals("yes", StringComparison.OrdinalIgnoreCase)))
+        {
+            psi.ArgumentList.Add("--cookies-from-browser");
+            log("[*] Using YouTube cookies from system browser (--cookies-from-browser)");
+        }
     }
 
     // ---------------------------------------------------------------
