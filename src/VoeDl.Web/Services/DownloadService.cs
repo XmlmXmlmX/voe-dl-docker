@@ -1272,8 +1272,10 @@ public sealed class DownloadService
              useBrowserCookies.Equals("true", StringComparison.OrdinalIgnoreCase) ||
              useBrowserCookies.Equals("yes", StringComparison.OrdinalIgnoreCase)))
         {
+            var browserSpec = Environment.GetEnvironmentVariable("YT_DLP_BROWSER") ?? "chrome";
             psi.ArgumentList.Add("--cookies-from-browser");
-            log("[*] Using YouTube cookies from system browser (--cookies-from-browser)");
+            psi.ArgumentList.Add(browserSpec);
+            log($"[*] Using YouTube cookies from system browser: {browserSpec}");
         }
     }
 
