@@ -1209,12 +1209,21 @@ public sealed class DownloadService
                 mediaUrl,
                 "-o", outputTemplate,
                 "--no-warnings",
+                "--geo-bypass",
+                "--no-check-certificate",
+                "-f", "best",
+                "--socket-timeout", "30",
+                "--retries", "3",
+                "--fragment-retries", "3",
+                "--no-part",
             },
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+
+        AddYtDlpCookiesIfConfigured(psi, log);
 
         using var process = new System.Diagnostics.Process { StartInfo = psi };
         process.OutputDataReceived += (_, e) => { if (e.Data is not null) log(e.Data); };
@@ -1226,6 +1235,25 @@ public sealed class DownloadService
 
         await process.WaitForExitAsync(ct);
         return process.ExitCode;
+    }
+
+    private static void AddYtDlpCookiesIfConfigured(
+        System.Diagnostics.ProcessStartInfo psi,
+        Action<string> log)
+    {
+        var cookieFile = Environment.GetEnvironmentVariable("YT_DLP_COOKIES");
+        if (string.IsNullOrWhiteSpace(cookieFile))
+            return;
+
+        if (!File.Exists(cookieFile))
+        {
+            log($"[!] YT_DLP_COOKIES is set to '{cookieFile}' but the file does not exist.");
+            return;
+        }
+
+        psi.ArgumentList.Add("--cookies");
+        psi.ArgumentList.Add(cookieFile);
+        log($"[*] Using yt-dlp cookies file: {cookieFile}");
     }
 
     // ---------------------------------------------------------------
