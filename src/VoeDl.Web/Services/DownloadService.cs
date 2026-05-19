@@ -677,6 +677,14 @@ public sealed class DownloadService
             return (null, "", "", "");
         }
 
+        if (IsYtDlpFriendlyUrl(url))
+        {
+            log($"[*] Detected external yt-dlp host, using original URL: {url}");
+            var ytDlpName = GetYtDlpFriendlyName(url);
+            var ytDlpFolderName = MakeFolderName(ytDlpName);
+            return (url, string.Empty, ytDlpName, ytDlpFolderName);
+        }
+
         string pageHtml;
         try
         {
@@ -1381,6 +1389,29 @@ public sealed class DownloadService
         }
 
         return true;
+    }
+
+    private static string GetYtDlpFriendlyName(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return MakeFolderName(url);
+
+        if (uri.Host.Equals("youtu.be", StringComparison.OrdinalIgnoreCase))
+            return MakeFolderName(uri.AbsolutePath.Trim('/'));
+
+        var path = uri.AbsolutePath.Trim('/');
+        var query = QueryHelpers.ParseQuery(uri.Query);
+
+        if (path.Equals("watch", StringComparison.OrdinalIgnoreCase) && query.TryGetValue("v", out var videoId))
+            return MakeFolderName("YouTube_" + videoId.ToString());
+
+        if (path.Equals("playlist", StringComparison.OrdinalIgnoreCase) && query.TryGetValue("list", out var playlistId))
+            return MakeFolderName("YouTube_Playlist_" + playlistId.ToString());
+
+        if (!string.IsNullOrEmpty(path))
+            return MakeFolderName(path.Replace('/', '_'));
+
+        return MakeFolderName(uri.Host);
     }
 
     private static bool IsLoginFlowUrl(Uri uri)
