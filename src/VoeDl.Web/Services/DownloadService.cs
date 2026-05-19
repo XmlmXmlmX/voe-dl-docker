@@ -61,6 +61,16 @@ public sealed class DownloadService
 
     private static readonly string[] ObfuscationPatterns = ["@$", "^^", "~@", "%?", "*~", "!!", "#&"];
 
+    private static readonly string[] YtDlpFriendlyHosts =
+        ["youtube.com", "www.youtube.com", "m.youtube.com", "youtube-nocookie.com", "youtu.be",
+         "vimeo.com", "www.vimeo.com", "dailymotion.com", "www.dailymotion.com",
+         "twitch.tv", "www.twitch.tv", "facebook.com", "www.facebook.com",
+         "x.com", "www.x.com", "twitter.com", "www.twitter.com", "m.twitter.com",
+         "tiktok.com", "www.tiktok.com", "rutube.ru", "www.rutube.ru",
+         "bilibili.com", "www.bilibili.com", "reddit.com", "www.reddit.com",
+         "soundcloud.com", "www.soundcloud.com", "ok.ru", "www.ok.ru",
+         "crunchyroll.com", "www.crunchyroll.com", "vk.com", "www.vk.com"];
+
     private static readonly string[] TruthyValues = ["1", "true", "yes", "on"];
 
     private static readonly Regex StoRootRegex = new(
@@ -712,6 +722,12 @@ public sealed class DownloadService
         name = SanitizeFilename(name);
         log($"Name of file: {name}");
 
+        if (IsYtDlpFriendlyUrl(url))
+        {
+            log($"[*] Detected external yt-dlp host, using original URL: {url}");
+            return (url, string.Empty, name, folderName);
+        }
+
         // ---- Method 1: var sources pattern ----
         var (srcUrl, mediaType) = TryMethod1VarSources(pageHtml, log);
 
@@ -746,32 +762,54 @@ public sealed class DownloadService
         // ---- iframe fallback ----
         if (srcUrl is null)
         {
-            var iframe = document.QuerySelectorAll("iframe").FirstOrDefault();
-            if (iframe is not null)
-            {
-                var iframeSrc = iframe.GetAttribute("src") ?? string.Empty;
-                if (iframeSrc.StartsWith("//")) iframeSrc = "https:" + iframeSrc;
-                if (!iframeSrc.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            var baseUri = new Uri(url);
+            var iframeSources = document.QuerySelectorAll("iframe")
+                .Select(iframe => iframe.GetAttribute("src") ?? string.Empty)
+                .Select(src => src.StartsWith("//") ? "https:" + src : src)
+                .Select(src =>
                 {
-                    var baseUri = new Uri(url);
-                    iframeSrc = new Uri(baseUri, iframeSrc).ToString();
-                }
+                    if (src.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                        return src;
 
+                    try
+                    {
+                        return new Uri(baseUri, src).ToString();
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+                })
+                .Where(src => !string.IsNullOrWhiteSpace(src))
+                .Select(src => src!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var rawSrc in iframeSources)
+            {
+                var iframeSrc = rawSrc;
                 if (TryResolveAuthRedirectTarget(iframeSrc, out var resolvedTarget))
                 {
-                    log($"[*] Resolved auth redirect iframe target: {resolvedTarget}");
                     iframeSrc = resolvedTarget;
+                    log($"[*] Resolved auth redirect iframe target: {resolvedTarget}");
                 }
 
-                var baseUri2 = new Uri(url);
-                var iframeUri = new Uri(iframeSrc);
-                if (!iframeUri.Host.Equals(baseUri2.Host, StringComparison.OrdinalIgnoreCase))
+                if (!Uri.TryCreate(iframeSrc, UriKind.Absolute, out var iframeUri))
+                    continue;
+
+                if (IsLoginFlowUrl(iframeUri))
+                {
+                    log($"[*] Skipping login/auth iframe source: {iframeSrc}");
+                    continue;
+                }
+
+                if (!iframeUri.Host.Equals(baseUri.Host, StringComparison.OrdinalIgnoreCase))
                 {
                     log($"[*] Found external iframe source, treating as media URL: {iframeSrc}");
                     return (iframeSrc, "", name, folderName);
                 }
 
-                log($"[*] Found iframe, following to: {iframeSrc}");
+                log($"[*] Found internal iframe, following to: {iframeSrc}");
                 var iframeResult = await ExtractSourceAsync(iframeSrc, log, ct, depth + 1);
                 return (iframeResult.Url, iframeResult.MediaType, name, folderName);
             }
@@ -1282,6 +1320,56 @@ public sealed class DownloadService
 
         targetUrl = continueUrl;
         return true;
+    }
+
+    private static bool IsYtDlpFriendlyUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return false;
+
+        var host = uri.Host.Trim().ToLowerInvariant();
+        if (!YtDlpFriendlyHosts.Contains(host, StringComparer.OrdinalIgnoreCase))
+            return false;
+
+        if (host == "youtu.be")
+            return uri.AbsolutePath.Length > 1;
+
+        if (host.EndsWith("youtube.com", StringComparison.OrdinalIgnoreCase))
+        {
+            var path = uri.AbsolutePath.TrimEnd('/');
+            if (path.Equals("/watch", StringComparison.OrdinalIgnoreCase))
+                return uri.Query.Contains("v=");
+
+            if (path.StartsWith("/shorts", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("/embed", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("/playlist", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("/clip", StringComparison.OrdinalIgnoreCase)
+                || path.Equals(string.Empty, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsLoginFlowUrl(Uri uri)
+    {
+        if (uri.Host.Contains("google.com", StringComparison.OrdinalIgnoreCase)
+            && uri.AbsolutePath.Contains("ServiceLogin", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (uri.Host.Contains("youtube.com", StringComparison.OrdinalIgnoreCase)
+            && uri.AbsolutePath.Contains("signin", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static string ExtractTitle(IHtmlDocument document, string url)
