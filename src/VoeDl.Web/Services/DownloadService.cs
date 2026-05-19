@@ -756,6 +756,21 @@ public sealed class DownloadService
                     var baseUri = new Uri(url);
                     iframeSrc = new Uri(baseUri, iframeSrc).ToString();
                 }
+
+                if (TryResolveAuthRedirectTarget(iframeSrc, out var resolvedTarget))
+                {
+                    log($"[*] Resolved auth redirect iframe target: {resolvedTarget}");
+                    iframeSrc = resolvedTarget;
+                }
+
+                var baseUri2 = new Uri(url);
+                var iframeUri = new Uri(iframeSrc);
+                if (!iframeUri.Host.Equals(baseUri2.Host, StringComparison.OrdinalIgnoreCase))
+                {
+                    log($"[*] Found external iframe source, treating as media URL: {iframeSrc}");
+                    return (iframeSrc, "", name, folderName);
+                }
+
                 log($"[*] Found iframe, following to: {iframeSrc}");
                 var iframeResult = await ExtractSourceAsync(iframeSrc, log, ct, depth + 1);
                 return (iframeResult.Url, iframeResult.MediaType, name, folderName);
@@ -1246,6 +1261,27 @@ public sealed class DownloadService
             request.Headers.TryAddWithoutValidation("Referer", $"{uri.Scheme}://{uri.Host}/");
         }
         catch { /* ignore */ }
+    }
+
+    private static bool TryResolveAuthRedirectTarget(string iframeSrc, out string targetUrl)
+    {
+        targetUrl = string.Empty;
+        if (!Uri.TryCreate(iframeSrc, UriKind.Absolute, out var uri))
+            return false;
+
+        if (!uri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        if (!query.TryGetValue("continue", out var continueValues))
+            return false;
+
+        var continueUrl = continueValues.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(continueUrl) || !Uri.IsWellFormedUriString(continueUrl, UriKind.Absolute))
+            return false;
+
+        targetUrl = continueUrl;
+        return true;
     }
 
     private static string ExtractTitle(IHtmlDocument document, string url)
