@@ -44,6 +44,41 @@ docker compose up -d
 Downloads are saved to `./downloads` on the host by default.
 Access the web UI at `http://localhost:8080`.
 
+### Published Container Images
+
+This repository publishes Docker images to both Docker Hub and GitHub Container Registry.
+
+- Docker Hub: `docker.io/<dockerhub-username>/voe-dl`
+- GitHub Container Registry: `ghcr.io/<github-owner>/voe-dl`
+
+Production-ready images are still released from Git tags in the form `vX.Y.Z`.
+Each successful push build also publishes prerelease images with branch and commit identifiers.
+
+#### Tagging policy
+
+- `vX.Y.Z`, `X.Y.Z`, `X.Y`, `X`, and `latest` are published for tagged release builds.
+- `preview`, `sha-<short>`, `<branch-name>`, and `<branch-name>-build<run>` are published for branch builds.
+
+#### Example pull commands
+
+```bash
+docker pull ghcr.io/<github-owner>/voe-dl:preview
+
+docker pull docker.io/<dockerhub-username>/voe-dl:v1.2.3
+```
+
+#### GitHub Actions configuration
+
+The workflow uses:
+
+- `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets for Docker Hub login
+- `GITHUB_TOKEN` for GHCR login
+- `permissions: packages: write` so GitHub Actions can publish GHCR packages
+
+For GHCR, make sure the package visibility is configured as desired in GitHub Packages settings.
+
+When the image is built from a release tag, `APP_VERSION` inside the container is set to the release version. For CI prerelease builds it is set to `prerelease-<run>`.
+
 ### Custom Output Path
 
 Set the `DOWNLOAD_PATH` environment variable to save downloads to any host directory:
