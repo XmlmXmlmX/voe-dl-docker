@@ -174,6 +174,10 @@ If the logs show that environment variables are not being read, you need to **ex
    DataProtection__KeysPath=/var/lib/voedl/dataprotection
    ConnectionStrings__DefaultConnection=Host=db;Database=voedl;Username=voedl;Password=<your-password>
    ```
+   If the TrueNAS UI does not allow double underscores, use this alternate key name instead:
+   ```
+   ConnectionStrings:DefaultConnection=Host=db;Database=voedl;Username=voedl;Password=<your-password>
+   ```
 4. **Add the storage mounts** to match the paths above
 5. **Restart the app**
 6. **Check logs again** – should now show the resolved paths

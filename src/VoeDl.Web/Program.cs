@@ -71,11 +71,82 @@ builder.Services.AddHttpClient("tmdb", (sp, client) =>
 });
 
 // Core application services
-var pgConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+var pgConnectionString = ResolvePostgresConnectionString(builder.Configuration);
 if (!string.IsNullOrWhiteSpace(pgConnectionString))
 {
     builder.Services.AddDbContextFactory<AppDbContext>(options =>
         options.UseNpgsql(pgConnectionString));
+}
+
+static string? ResolvePostgresConnectionString(IConfiguration config)
+{
+    var connectionString = config.GetConnectionString("DefaultConnection");
+    if (!string.IsNullOrWhiteSpace(connectionString))
+        return connectionString.Trim();
+
+    connectionString = config["ConnectionStrings:DefaultConnection"] ??
+                       config["ConnectionStrings__DefaultConnection"];
+    if (!string.IsNullOrWhiteSpace(connectionString))
+        return connectionString.Trim();
+
+    var databaseUrl = config["DATABASE_URL"] ?? config["DatabaseUrl"] ??
+                      config["DATABASE_URI"] ?? config["DatabaseUri"];
+    if (!string.IsNullOrWhiteSpace(databaseUrl))
+    {
+        if (TryParsePostgresUri(databaseUrl.Trim(), out var parsedConnectionString))
+            return parsedConnectionString;
+
+        return databaseUrl.Trim();
+    }
+
+    var host = config["POSTGRES_HOST"] ?? config["PGHOST"];
+    var database = config["POSTGRES_DB"] ?? config["PGDATABASE"] ?? "voedl";
+    var user = config["POSTGRES_USER"] ?? config["PGUSER"] ?? "voedl";
+    var password = config["POSTGRES_PASSWORD"] ?? config["PGPASSWORD"];
+    var port = config["POSTGRES_PORT"] ?? config["PGPORT"];
+
+    if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(password))
+        return null;
+
+    var builder = new Npgsql.NpgsqlConnectionStringBuilder
+    {
+        Host = host,
+        Database = database,
+        Username = user,
+        Password = password,
+    };
+    if (int.TryParse(port, out var portNumber))
+        builder.Port = portNumber;
+
+    return builder.ToString();
+}
+
+static bool TryParsePostgresUri(string uriString, out string connectionString)
+{
+    connectionString = string.Empty;
+    if (!Uri.TryCreate(uriString, UriKind.Absolute, out var uri))
+        return false;
+
+    if (uri.Scheme != "postgres" && uri.Scheme != "postgresql")
+        return false;
+
+    var builder = new Npgsql.NpgsqlConnectionStringBuilder
+    {
+        Host = uri.Host,
+        Database = uri.AbsolutePath.TrimStart('/'),
+        Port = uri.Port > 0 ? uri.Port : 5432
+    };
+
+    if (!string.IsNullOrEmpty(uri.UserInfo))
+    {
+        var userInfoParts = uri.UserInfo.Split(':', 2);
+        builder.Username = Uri.UnescapeDataString(userInfoParts[0]);
+        if (userInfoParts.Length > 1)
+            builder.Password = Uri.UnescapeDataString(userInfoParts[1]);
+    }
+
+    connectionString = builder.ToString();
+    return true;
 }
 
 builder.Services.AddSingleton<TmdbService>();
