@@ -42,43 +42,7 @@ jobs:
       - name: Compute image tags and app version
         id: metadata
         shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ "${GITHUB_REF}" =~ ^refs/tags/v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            VERSION="${BASH_REMATCH[1]}"
-            MAJOR="${VERSION%%.*}"
-            MINOR="${VERSION#*.}"
-            MINOR="${MINOR%%.*}"
-
-            TAGS=$'v'"${VERSION}"$'\n'"${VERSION}"$'\n'"${MAJOR}.${MINOR}"$'\n'"${MAJOR}"$'\n'"latest"
-            APP_VERSION="${VERSION}"
-          else
-            BRANCH="${GITHUB_REF#refs/heads/}"
-            SANITIZED_BRANCH="$(echo "${BRANCH}" | sed -E 's#[^A-Za-z0-9_.-]+#-#g' | tr '[:upper:]' '[:lower:]')"
-            SHORT_SHA="${GITHUB_SHA:0:7}"
-
-            TAGS="${SANITIZED_BRANCH}"$'\n'"${SANITIZED_BRANCH}-build${GITHUB_RUN_NUMBER}"$'\n'"sha-${SHORT_SHA}"$'\n'"preview"
-            APP_VERSION="prerelease-${GITHUB_RUN_NUMBER}"
-          fi
-
-          cat <<EOF >> "$GITHUB_OUTPUT"
-app_version=${APP_VERSION}
-image_tags<<EOF
-${TAGS}
-EOF
-EOF
-
-          full_tags=""
-          while IFS= read -r tag; do
-            full_tags+="${DOCKERHUB_IMAGE}:${tag}\n${GHCR_IMAGE}:${tag}\n"
-          done <<< "${TAGS}"
-
-          cat <<EOF >> "$GITHUB_OUTPUT"
-full_tags<<EOF
-${full_tags}
-EOF
-EOF
+        run: bash .github/scripts/compute-image-metadata.sh
 
       - name: Build and push Docker images
         uses: docker/build-push-action@v6
