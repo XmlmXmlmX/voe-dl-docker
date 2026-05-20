@@ -48,6 +48,24 @@ namespace VoeDl.Web.Migrations
 
                     b.ToTable("DownloadHistory");
                 });
+
+            modelBuilder.Entity("VoeDl.Web.Models.YtDlpCookie", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("YtDlpCookies");
+                });
 #pragma warning restore 612, 618
         }
     }

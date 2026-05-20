@@ -80,6 +80,7 @@ if (!string.IsNullOrWhiteSpace(pgConnectionString))
 
 builder.Services.AddSingleton<TmdbService>();
 builder.Services.AddSingleton<MediathekViewWebService>();
+builder.Services.AddSingleton<CookieStoreService>();
 builder.Services.AddSingleton<DownloadService>();
 builder.Services.AddSingleton<JobManagerService>();
 builder.Services.AddSingleton<IJobManagerService>(sp => sp.GetRequiredService<JobManagerService>());

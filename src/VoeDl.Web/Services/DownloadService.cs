@@ -92,6 +92,7 @@ public sealed class DownloadService
     private readonly HttpClient _downloadHttp;
     private readonly TmdbService _tmdb;
     private readonly MediathekViewWebService _mediathek;
+    private readonly CookieStoreService _cookieStore;
     private readonly ILogger<DownloadService> _logger;
     private readonly Random _rng = new();
 
@@ -99,12 +100,14 @@ public sealed class DownloadService
         IHttpClientFactory httpClientFactory,
         TmdbService tmdbService,
         MediathekViewWebService mediathekViewWebService,
+        CookieStoreService cookieStoreService,
         ILogger<DownloadService> logger)
     {
         _http = httpClientFactory.CreateClient("voe");
         _downloadHttp = httpClientFactory.CreateClient("voe-download");
         _tmdb = tmdbService;
         _mediathek = mediathekViewWebService;
+        _cookieStore = cookieStoreService;
         _logger = logger;
     }
 
@@ -419,7 +422,22 @@ public sealed class DownloadService
         {
             var outputTemplate = Path.Combine(outputDir, $"{baseName}.%(ext)s");
             logCallback($"[*] Output path: {outputTemplate}");
-            exitCode = await RunYtDlpAsync(sourceUrl, outputTemplate, logCallback, cancellationToken);
+
+            string? tempCookieFile = null;
+            try
+            {
+                tempCookieFile = await _cookieStore.CreateTempCookieFileAsync();
+                exitCode = await RunYtDlpAsync(sourceUrl, outputTemplate, logCallback, cancellationToken, tempCookieFile);
+            }
+            finally
+            {
+                if (!string.IsNullOrWhiteSpace(tempCookieFile) && File.Exists(tempCookieFile))
+                {
+                    try { File.Delete(tempCookieFile); }
+                    catch { /* ignore cleanup failures */ }
+                }
+            }
+
             outputPath = exitCode == 0 ? FindCreatedFile(outputDir, baseName) : null;
         }
 
@@ -1206,7 +1224,8 @@ public sealed class DownloadService
         string mediaUrl,
         string outputTemplate,
         Action<string> log,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? cookieFilePath = null)
     {
         string ytDlp = FindYtDlp();
         var psi = new System.Diagnostics.ProcessStartInfo
@@ -1232,7 +1251,7 @@ public sealed class DownloadService
             CreateNoWindow = true,
         };
 
-        AddYtDlpCookiesIfConfigured(psi, log);
+        AddYtDlpCookiesIfConfigured(psi, log, cookieFilePath);
 
         using var process = new System.Diagnostics.Process { StartInfo = psi };
         process.OutputDataReceived += (_, e) => { if (e.Data is not null) log(e.Data); };
@@ -1248,8 +1267,22 @@ public sealed class DownloadService
 
     private static void AddYtDlpCookiesIfConfigured(
         System.Diagnostics.ProcessStartInfo psi,
-        Action<string> log)
+        Action<string> log,
+        string? cookieFilePath)
     {
+        if (!string.IsNullOrWhiteSpace(cookieFilePath))
+        {
+            if (File.Exists(cookieFilePath))
+            {
+                psi.ArgumentList.Add("--cookies");
+                psi.ArgumentList.Add(cookieFilePath);
+                log($"[*] Using stored yt-dlp cookies file: {cookieFilePath}");
+                return;
+            }
+
+            log($"[!] Requested stored yt-dlp cookie file does not exist: {cookieFilePath}");
+        }
+
         var cookieFile = Environment.GetEnvironmentVariable("YT_DLP_COOKIES");
         if (!string.IsNullOrWhiteSpace(cookieFile))
         {
