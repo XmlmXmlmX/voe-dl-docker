@@ -29,9 +29,13 @@ done
 echo "EOF" >> "${GITHUB_OUTPUT}"
 
 echo "full_tags<<EOF" >> "${GITHUB_OUTPUT}"
+# Lowercase the image base names to satisfy registry requirements
+DOCKERHUB_IMAGE_LC="$(echo "${DOCKERHUB_IMAGE:-}" | tr '[:upper:]' '[:lower:]')"
+GHCR_IMAGE_LC="$(echo "${GHCR_IMAGE:-}" | tr '[:upper:]' '[:lower:]')"
+
 for t in "${TAGS_LIST[@]}"; do
-  printf '%s\n' "${DOCKERHUB_IMAGE}:${t}" >> "${GITHUB_OUTPUT}"
-  printf '%s\n' "${GHCR_IMAGE}:${t}" >> "${GITHUB_OUTPUT}"
+  printf '%s\n' "${DOCKERHUB_IMAGE_LC}:${t}" >> "${GITHUB_OUTPUT}"
+  printf '%s\n' "${GHCR_IMAGE_LC}:${t}" >> "${GITHUB_OUTPUT}"
 done
 echo "EOF" >> "${GITHUB_OUTPUT}"
 
