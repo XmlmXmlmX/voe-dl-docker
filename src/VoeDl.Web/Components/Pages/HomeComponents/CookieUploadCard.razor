@@ -23,10 +23,22 @@
             <MudGrid>
                 <MudItem xs="12" md="8">
                     <InputFile OnChange="OnInputFileChange" accept=".txt" />
+                    @if (!string.IsNullOrEmpty(_pendingCookieFileName))
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                            Ausgewählte Datei: @_pendingCookieFileName
+                        </MudText>
+                    }
                 </MudItem>
-                <MudItem xs="12" md="4" Class="d-flex align-center">
+                <MudItem xs="12" md="4" Class="d-flex align-center gap-2">
                     <MudButton Variant="Variant.Filled"
                                Color="Color.Primary"
+                               Disabled="!CookieStore.IsDatabaseConfigured || !_hasPendingCookie"
+                               OnClick="SavePendingCookie">
+                        Speichern
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Secondary"
                                Disabled="!_cookieAvailable"
                                OnClick="RemoveCookie">
                         Cookie entfernen
@@ -51,6 +63,9 @@
 @code {
     private bool _cookieAvailable;
     private DateTimeOffset? _cookieUploadedAt;
+    private bool _hasPendingCookie;
+    private string? _pendingCookieFileName;
+    private string? _pendingCookieContent;
 
     protected override async Task OnInitializedAsync()
     {
@@ -73,9 +88,33 @@
         {
             using var stream = file.OpenReadStream(maxAllowedSize: 5_000_000);
             using var reader = new StreamReader(stream, Encoding.UTF8);
-            var content = await reader.ReadToEndAsync();
+            _pendingCookieContent = await reader.ReadToEndAsync();
+            _pendingCookieFileName = file.Name;
+            _hasPendingCookie = true;
 
-            await CookieStore.SaveCookieAsync(content);
+            Snackbar.Add($"Cookie-Datei '{file.Name}' geladen. Bitte drücken Sie Speichern.", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Fehler beim Lesen der Cookie-Datei: {ex.Message}", Severity.Error);
+            _hasPendingCookie = false;
+            _pendingCookieContent = null;
+            _pendingCookieFileName = null;
+        }
+    }
+
+    private async Task SavePendingCookie()
+    {
+        if (!_hasPendingCookie || string.IsNullOrWhiteSpace(_pendingCookieContent))
+            return;
+
+        try
+        {
+            await CookieStore.SaveCookieAsync(_pendingCookieContent);
+            _hasPendingCookie = false;
+            _pendingCookieContent = null;
+            _pendingCookieFileName = null;
+
             await RefreshStatusAsync();
             Snackbar.Add("Cookie erfolgreich gespeichert.", Severity.Success);
         }
