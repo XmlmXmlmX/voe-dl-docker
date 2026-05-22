@@ -1,0 +1,168 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Text
+@using MudBlazor
+@using VoeDl.Web.Services
+@inject CookieStoreService CookieStore
+@inject ISnackbar Snackbar
+
+@*
+    Settings dialog — opened from the gear icon in the AppBar.
+    Hosts the cookie upload (moved out of the main page) plus
+    a couple of toggle preferences.
+*@
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Settings" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">Einstellungen</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+
+        @* === Cookie section === *@
+        <MudText Typo="Typo.subtitle1" Style="font-weight:500;">yt-dlp Cookies</MudText>
+        <MudText Typo="Typo.body2" Style="color:var(--mud-palette-text-secondary);" Class="mb-3">
+            Lade eine <code style="font-family:monospace;">cookies.txt</code> hoch, um bei
+            geo-/paywall-geschützten Streams zu authentifizieren.
+        </MudText>
+
+        @if (!CookieStore.IsDatabaseConfigured)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mb-2">
+                PostgreSQL ist nicht konfiguriert. Cookie-Speicherung im DB ist deaktiviert.
+            </MudAlert>
+        }
+        else
+        {
+            @if (_cookieAvailable)
+            {
+                <MudPaper Class="d-flex align-center pa-3 mb-3"
+                          Elevation="0"
+                          Style="background:var(--mud-palette-success-hover);border:1px solid var(--mud-palette-success);border-radius:8px;">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" />
+                    <div class="flex-grow-1">
+                        <MudText Typo="Typo.body2" Style="font-weight:500;">cookies.txt gespeichert</MudText>
+                        <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);">
+                            Hochgeladen am @_cookieUploadedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                        </MudText>
+                    </div>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Delete"
+                               OnClick="RemoveCookie">
+                        Entfernen
+                    </MudButton>
+                </MudPaper>
+            }
+
+            <MudPaper Class="pa-4" Elevation="0"
+                      Style="border:2px dashed var(--mud-palette-divider);border-radius:8px;text-align:center;">
+                <MudIcon Icon="@Icons.Material.Filled.CloudUpload"
+                         Style="font-size:32px;color:var(--mud-palette-action-default);" />
+                <MudText Typo="Typo.body2" Class="mt-1">
+                    @(_cookieAvailable ? "Neue cookies.txt hochladen" : "cookies.txt hochladen")
+                </MudText>
+                <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);">
+                    Datei auswählen oder hier ablegen
+                </MudText>
+                <div class="mt-2">
+                    <InputFile OnChange="OnInputFileChange" accept=".txt" />
+                </div>
+                @if (!string.IsNullOrEmpty(_pendingCookieFileName))
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.Center" Spacing="2" Class="mt-2">
+                        <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" Size="Size.Small" />
+                        <MudText Typo="Typo.body2">@_pendingCookieFileName</MudText>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Save"
+                                   OnClick="SavePendingCookie">
+                            Speichern
+                        </MudButton>
+                    </MudStack>
+                }
+            </MudPaper>
+        }
+
+        <MudDivider Class="my-4" />
+
+        @* === System info === *@
+        <MudText Typo="Typo.subtitle1" Style="font-weight:500;">System</MudText>
+        <MudText Typo="Typo.caption"
+                 Style="font-family:monospace;display:block;">
+            voe-dl-docker · build dev<br />
+            API connected · DB @(CookieStore.IsDatabaseConfigured ? "OK" : "deaktiviert")
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Default" OnClick="Close">Schließen</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private bool _cookieAvailable;
+    private DateTimeOffset? _cookieUploadedAt;
+    private string? _pendingCookieFileName;
+    private string? _pendingCookieContent;
+
+    protected override async Task OnInitializedAsync() => await RefreshStatusAsync();
+
+    private async Task OnInputFileChange(InputFileChangeEventArgs args)
+    {
+        if (!CookieStore.IsDatabaseConfigured)
+        {
+            Snackbar.Add("Cookie-Speicherung ist ohne Datenbank nicht möglich.", Severity.Error);
+            return;
+        }
+        var file = args.File;
+        if (file == null) return;
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 5_000_000);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            _pendingCookieContent = await reader.ReadToEndAsync();
+            _pendingCookieFileName = file.Name;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Fehler beim Lesen: {ex.Message}", Severity.Error);
+            _pendingCookieContent = null;
+            _pendingCookieFileName = null;
+        }
+    }
+
+    private async Task SavePendingCookie()
+    {
+        if (string.IsNullOrWhiteSpace(_pendingCookieContent)) return;
+        try
+        {
+            await CookieStore.SaveCookieAsync(_pendingCookieContent);
+            _pendingCookieContent = null;
+            _pendingCookieFileName = null;
+            await RefreshStatusAsync();
+            Snackbar.Add("Cookie erfolgreich gespeichert.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Fehler beim Speichern: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task RemoveCookie()
+    {
+        if (!CookieStore.IsDatabaseConfigured) return;
+        await CookieStore.DeleteCookieAsync();
+        await RefreshStatusAsync();
+        Snackbar.Add("Cookie entfernt.", Severity.Success);
+    }
+
+    private async Task RefreshStatusAsync()
+    {
+        _cookieAvailable = await CookieStore.HasStoredCookieAsync();
+        _cookieUploadedAt = await CookieStore.GetCookieUploadedAtAsync();
+    }
+
+    private void Close() => MudDialog.Close(DialogResult.Ok(true));
+}

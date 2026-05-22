@@ -1,6 +1,7 @@
 @page "/"
 @using VoeDl.Web.Models
 @using VoeDl.Web.Services
+@using VoeDl.Web.Components.Layout
 @using VoeDl.Web.Components.Pages.HomeComponents
 @using Microsoft.Extensions.Logging
 @inject IJobManagerService JobManager
@@ -12,140 +13,166 @@
 
 <PageTitle>voe-dl</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Medium" Class="py-6">
-    <MudCard Elevation="2" Class="mb-4">
-        <MudCardContent>
-            <MudText Typo="Typo.h6">MediathekViewWeb-Suche</MudText>
-            <MudGrid>
-                <MudItem xs="12" md="8">
-                    <MudTextField T="string"
-                                  @bind-Value="_mediathekQuery"
-                                  Label="Suchbegriff"
-                                  Placeholder="z. B. 8 blickwink"
-                                  Lines="1"
-                                  Variant="Variant.Outlined"
-                                  FullWidth="true"
-                                  Class="mb-2" />
+@* MudTabs replaces the long single-scroll page. Both tabs share screen state
+   so switching never blocks the running downloads. *@
+<MudTabs Elevation="0" Centered="false" Color="Color.Primary" 
+         Rounded="false" TabHeaderClass="px-3" >
+
+    <MudTabPanel Icon="@Icons.Material.Filled.CloudDownload" Text="Downloads"
+                 BadgeData="@(ActiveCount > 0 ? ActiveCount : null)"
+                 BadgeColor="Color.Secondary">
+
+        <MudContainer MaxWidth="MaxWidth.Large" Class="py-6">
+
+            @* === Primary URL input (top, most prominent) === *@
+            <DownloadInputCard
+                RawUrls="@_model.RawUrls"
+                RawUrlsChanged="OnRawUrlsChanged"
+                Duplicates="@_duplicates"
+                OnStartDownloads="StartDownloads"
+                OnForceDownload="ForceDownload"
+                OnDownloadDelta="DownloadDelta"
+                OnClearDuplicateWarning="ClearDuplicateWarning" />
+
+            @* === Stat tiles === *@
+            <MudGrid Class="mb-4" Spacing="2">
+                <MudItem xs="6" md="3">
+                    <MudPaper Class="d-flex align-center pa-3" Elevation="1">
+                        <MudPaper Class="d-flex align-center justify-center mr-3"
+                                  Style="@StatTileIconStyle(Color.Primary)" Elevation="0">
+                            <MudIcon Icon="@Icons.Material.Filled.PlayCircle" />
+                        </MudPaper>
+                        <div>
+                            <MudText Typo="Typo.h5" Style="font-weight:700;line-height:1;">@_runningCount</MudText>
+                            <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);">Aktiv</MudText>
+                        </div>
+                    </MudPaper>
                 </MudItem>
-                <MudItem xs="12" md="4" Class="d-flex align-center">
-                    <MudButton Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               Disabled="@string.IsNullOrWhiteSpace(_mediathekQuery)"
-                               OnClick="SearchMediathek">
-                        Suche starten
-                    </MudButton>
+                <MudItem xs="6" md="3">
+                    <MudPaper Class="d-flex align-center pa-3" Elevation="1">
+                        <MudPaper Class="d-flex align-center justify-center mr-3"
+                                  Style="@StatTileIconStyle(Color.Warning)" Elevation="0">
+                            <MudIcon Icon="@Icons.Material.Filled.Schedule" />
+                        </MudPaper>
+                        <div>
+                            <MudText Typo="Typo.h5" Style="font-weight:700;line-height:1;">@_queuedCount</MudText>
+                            <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);">Wartend</MudText>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudPaper Class="d-flex align-center pa-3" Elevation="1">
+                        <MudPaper Class="d-flex align-center justify-center mr-3"
+                                  Style="@StatTileIconStyle(Color.Success)" Elevation="0">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" />
+                        </MudPaper>
+                        <div>
+                            <MudText Typo="Typo.h5" Style="font-weight:700;line-height:1;">@_doneCount</MudText>
+                            <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);">Fertig (Session)</MudText>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudPaper Class="d-flex align-center pa-3" Elevation="1">
+                        <MudPaper Class="d-flex align-center justify-center mr-3"
+                                  Style="@StatTileIconStyle(Color.Error)" Elevation="0">
+                            <MudIcon Icon="@Icons.Material.Filled.Error" />
+                        </MudPaper>
+                        <div>
+                            <MudText Typo="Typo.h5" Style="font-weight:700;line-height:1;">@_errorCount</MudText>
+                            <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);">Fehler</MudText>
+                        </div>
+                    </MudPaper>
                 </MudItem>
             </MudGrid>
 
-            <MudCheckBox T="bool" @bind-Checked="_mediathekEverywhere" Label="Überall suchen" />
-            @if (_mediathekIsLoading)
+            @* === Sub-Tabs: Active / Recent / History === *@
+            <MudTabs Elevation="0"
+                TabHeaderClass="empty-state-paper"
+                ActivePanelIndex="@_subTabIndex"
+                ActivePanelIndexChanged="@(i => _subTabIndex = i)">
+                <MudDivider Class="mb-3" />
+                <MudTabPanel Text="Aktive Jobs" Icon="@Icons.Material.Filled.PlayCircle"
+                    PanelClass="mt-3"
+                    BadgeData="@(_activeJobs.Count > 0 ? _activeJobs.Count : null)">
+                    @if (_activeJobs.Count == 0)
+                    {
+                        <MudPaper Class="d-flex flex-column align-center justify-center pa-12 empty-state-paper" Elevation="0">
+                            <MudIcon Icon="@Icons.Material.Filled.Downloading" Size="Size.Large" Color="Color.Default" />
+                            <MudText Typo="Typo.subtitle1" Class="mt-2">Keine aktiven Downloads</MudText>
+                            <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);">
+                                Füge oben eine URL ein und starte einen Download.
+                            </MudText>
+                        </MudPaper>
+                    }
+                    else
+                    {
+                        @foreach (var job in _activeJobs)
+                        {
+                            <DownloadJobCard Job="@job"
+                                             QueuePosition="@GetQueuePosition(job)"
+                                             OnAbort="AbortJob"
+                                             OnRequeue="RequeueJob" />
+                        }
+                    }
+                </MudTabPanel>
+
+                <MudTabPanel Text="Zuletzt fertig" Icon="@Icons.Material.Filled.TaskAlt"
+                             BadgeData="@(_finishedJobs.Count > 0 ? _finishedJobs.Count : null)">
+                    @if (_finishedJobs.Count == 0)
+                    {
+                        <MudPaper Class="d-flex flex-column align-center justify-center pa-12 empty-state-paper" Elevation="0">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Color="Color.Default" />
+                            <MudText Typo="Typo.subtitle1" Class="mt-2">Noch keine fertigen Downloads</MudText>
+                            <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);">
+                                Abgeschlossene Jobs erscheinen hier bis zum Neustart.
+                            </MudText>
+                        </MudPaper>
+                    }
+                    else
+                    {
+                        @foreach (var job in _finishedJobs)
+                        {
+                            <DownloadJobCard Job="@job"
+                                             OnAbort="AbortJob"
+                                             OnRequeue="RequeueJob" />
+                        }
+                    }
+                </MudTabPanel>
+
+                <MudTabPanel Text="Historie" Icon="@Icons.Material.Filled.History"
+                             BadgeData="@(_history.Count > 0 ? _history.Count : null)">
+                    <DownloadHistoryCard History="@_history" HistoryEntries="@_historyEntries" />
+                </MudTabPanel>
+            </MudTabs>
+
+            @if (_lastUpdated.HasValue)
             {
-                <MudProgressLinear Indeterminate="true" Class="my-2" />
+                <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);" Align="Align.End" Class="d-block mt-2">
+                    Zuletzt aktualisiert: @_lastUpdated.Value.ToLocalTime().ToString("HH:mm:ss")
+                </MudText>
             }
-            @if (!string.IsNullOrWhiteSpace(_mediathekError))
-            {
-                <MudText Color="Color.Error">@_mediathekError</MudText>
-            }
+        </MudContainer>
+    </MudTabPanel>
 
-            @if (_mediathekResults.Count > 0)
-            {
-                <MudTable Items="_mediathekResults" Hover="true" Class="mt-3">
-                    <HeaderContent>
-                        <MudTh>Titel</MudTh>
-                        <MudTh>Kategorie</MudTh>
-                        <MudTh>Sender</MudTh>
-                        <MudTh>Veröffentlicht</MudTh>
-                        <MudTh>Aktion</MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd DataLabel="Titel">@context.Title</MudTd>
-                        <MudTd DataLabel="Kategorie">@context.Category</MudTd>
-                        <MudTd DataLabel="Sender">@context.Creator</MudTd>
-                        <MudTd DataLabel="Veröffentlicht">@context.PublishedAt?.ToLocalTime().ToString("yyyy-MM-dd")</MudTd>
-                        <MudTd>
-                            <MudStack Row="true" Spacing="1">
-                                <MudButton Variant="Variant.Filled"
-                                           Size="Size.Small"
-                                           Color="Color.Primary"
-                                           OnClick="() => EnqueueMediathekResult(context.MediaUrl, context.Title, context.Category, DownloadCategory.Auto)">
-                                    Auto
-                                </MudButton>
-                                <MudButton Variant="Variant.Filled"
-                                           Size="Size.Small"
-                                           Color="Color.Secondary"
-                                           OnClick="() => EnqueueMediathekResult(context.MediaUrl, context.Title, context.Category, DownloadCategory.Movie)">
-                                    Film
-                                </MudButton>
-                                <MudButton Variant="Variant.Filled"
-                                           Size="Size.Small"
-                                           Color="Color.Info"
-                                           OnClick="() => EnqueueMediathekResult(context.MediaUrl, context.Title, context.Category, DownloadCategory.Series)">
-                                    Serie
-                                </MudButton>
-                                <MudButton Variant="Variant.Filled"
-                                           Size="Size.Small"
-                                           Color="Color.Warning"
-                                           OnClick="() => EnqueueMediathekResult(context.MediaUrl, context.Title, context.Category, DownloadCategory.Documentary)">
-                                    Doku
-                                </MudButton>
-                            </MudStack>
-                        </MudTd>
-                    </RowTemplate>
-                </MudTable>
-            }
-        </MudCardContent>
-    </MudCard>
+    <MudTabPanel Icon="@Icons.Material.Filled.TravelExplore" Text="Mediathek-Suche">
+        <MudContainer MaxWidth="MaxWidth.Large" Class="py-6">
+            <MediathekSearchCard OnEnqueue="EnqueueMediathekResult" />
+        </MudContainer>
+    </MudTabPanel>
+</MudTabs>
 
-    <CookieUploadCard />
-
-    <DownloadInputCard
-        RawUrls="@_model.RawUrls"
-        RawUrlsChanged="OnRawUrlsChanged"
-        Duplicates="@_duplicates"
-        OnStartDownloads="StartDownloads"
-        OnForceDownload="ForceDownload"
-        OnDownloadDelta="DownloadDelta"
-        OnClearDuplicateWarning="ClearDuplicateWarning" />
-
-    <DownloadHistoryCard
-        History="@_history"
-        HistoryEntries="@_historyEntries" />
-
-    <!-- Job list header -->
-    <div class="d-flex justify-space-between align-center mb-3">
-        <MudText Typo="Typo.h6">Downloads</MudText>
-        @if (_lastUpdated.HasValue)
-        {
-            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                Zuletzt aktualisiert: @_lastUpdated.Value.ToLocalTime().ToString("HH:mm:ss")
-            </MudText>
-        }
-    </div>
-
-    @if (_jobs.Count == 0)
-    {
-        <MudText Typo="Typo.body2" Color="Color.Secondary">Noch keine Downloads gestartet.</MudText>
-    }
-    else
-    {
-        @foreach (var job in _jobs)
-        {
-            <DownloadJobCard
-                Job="@job"
-                QueuePosition="@GetQueuePosition(job)"
-                OnAbort="AbortJob"
-                OnRequeue="RequeueJob" />
-        }
-    }
-
-    <MudDivider Class="mt-4 mb-2" />
-    <MudText Typo="Typo.caption" Color="Color.Secondary" Align="Align.Center">
+<MudContainer MaxWidth="MaxWidth.Large" Class="pb-6">
+    <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);" Align="Align.Center" Class="d-block">
         voe-dl-docker @(Config["APP_VERSION"] ?? "dev")
     </MudText>
-
 </MudContainer>
 
+
 @code {
+    [CascadingParameter(Name = "AppShell")]
+    public MainLayout? AppShell { get; set; }
+
     private sealed class DownloadModel
     {
         public string RawUrls { get; set; } = string.Empty;
@@ -158,13 +185,18 @@
     private List<string> _duplicates = [];
     private List<string> _resolvedUrlsAwaitingConfirmation = [];
     private List<string> _deltaUrlsAwaitingConfirmation = [];
-    private string _mediathekQuery = string.Empty;
-    private bool _mediathekEverywhere = true;
-    private List<MediathekViewWebResult> _mediathekResults = [];
-    private bool _mediathekIsLoading;
-    private string? _mediathekError;
     private DateTimeOffset? _lastUpdated;
     private readonly HashSet<string> _notifiedTerminalJobs = [];
+    private int _subTabIndex;
+
+    private int _runningCount, _queuedCount, _doneCount, _errorCount;
+    private List<DownloadJob> _activeJobs = [];
+    private List<DownloadJob> _finishedJobs = [];
+
+    private int ActiveCount => _runningCount + _queuedCount;
+
+    private static string StatTileIconStyle(Color color) =>
+        $"width:40px;height:40px;border-radius:10px;background:var(--mud-palette-{color.ToString().ToLower()}-hover);color:var(--mud-palette-{color.ToString().ToLower()});";
 
     protected override async Task OnInitializedAsync()
     {
@@ -172,70 +204,76 @@
         {
             JobManager.JobsChanged += OnJobsChanged;
             _jobs = [.. JobManager.GetJobs()];
-            Logger.LogInformation("Loaded {JobCount} existing download jobs", _jobs.Count);
+            RecomputeBuckets();
 
             _history = [.. await JobManager.LoadHistoryAsync()];
-            Logger.LogInformation("Loaded {HistoryCount} URLs from download history", _history.Count);
-
             _historyEntries = [.. await JobManager.LoadHistoryEntriesAsync()];
-            Logger.LogInformation("Loaded {HistoryEntriesCount} history entries from database", _historyEntries.Count);
 
-            foreach (var terminalJob in _jobs.Where(j => j.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted))
-                _notifiedTerminalJobs.Add(terminalJob.Id);
+            foreach (var terminal in _jobs.Where(j => j.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted))
+                _notifiedTerminalJobs.Add(terminal.Id);
+
+            PushCounterToAppBar();
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error during Home component initialization: {ErrorMessage}", ex.Message);
-            Snackbar.Add($"Fehler beim Laden der Download-Historie: {ex.Message}", Severity.Error);
-            // Component still renders but with empty history - download button is still available
+            Logger.LogError(ex, "Error during Home initialization: {Msg}", ex.Message);
+            Snackbar.Add($"Fehler beim Laden der Historie: {ex.Message}", Severity.Error);
         }
     }
 
     private void OnJobsChanged()
     {
-        _jobs = [.. JobManager.GetJobs()];
-        _lastUpdated = DateTimeOffset.UtcNow;
-
-        var newlyCompletedJobs = _jobs
-            .Where(j => j.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted && _notifiedTerminalJobs.Add(j.Id))
-            .ToList();
-
-        foreach (var completedJob in newlyCompletedJobs)
+        _ = InvokeAsync(async () =>
         {
-            var jobLabel = completedJob.Title ?? completedJob.Url;
-            if (completedJob.Status == JobStatus.Done)
-            {
-                Snackbar.Add($"Download abgeschlossen: {jobLabel}", Severity.Success);
-            }
-            else if (completedJob.Status == JobStatus.Error)
-            {
-                Snackbar.Add($"Download fehlgeschlagen: {jobLabel}", Severity.Error);
-            }
-            else if (completedJob.Status == JobStatus.Aborted)
-            {
-                Snackbar.Add($"Download abgebrochen: {jobLabel}", Severity.Warning);
-            }
-        }
+            _jobs = [.. JobManager.GetJobs()];
+            _lastUpdated = DateTimeOffset.UtcNow;
+            RecomputeBuckets();
 
-        // Refresh history in the background when a job finishes
-        var recentlyFinished = _jobs.Any(j =>
-            j.Status is JobStatus.Done &&
-            j.FinishedAt.HasValue &&
-            DateTimeOffset.UtcNow - j.FinishedAt.Value < TimeSpan.FromSeconds(5));
-        if (recentlyFinished)
-        {
-            InvokeAsync(async () =>
+            foreach (var done in _jobs.Where(j => j.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted && _notifiedTerminalJobs.Add(j.Id)))
+            {
+                var label = done.Title ?? done.Url;
+                var sev = done.Status switch
+                {
+                    JobStatus.Done => Severity.Success,
+                    JobStatus.Error => Severity.Error,
+                    _ => Severity.Warning,
+                };
+                var prefix = done.Status switch
+                {
+                    JobStatus.Done => "Download abgeschlossen",
+                    JobStatus.Error => "Download fehlgeschlagen",
+                    _ => "Download abgebrochen",
+                };
+                Snackbar.Add($"{prefix}: {label}", sev);
+            }
+
+            PushCounterToAppBar();
+
+            var recentlyFinished = _jobs.Any(j => j.Status is JobStatus.Done && j.FinishedAt.HasValue && DateTimeOffset.UtcNow - j.FinishedAt.Value < TimeSpan.FromSeconds(5));
+            if (recentlyFinished)
             {
                 _history = [.. await JobManager.LoadHistoryAsync()];
                 _historyEntries = [.. await JobManager.LoadHistoryEntriesAsync()];
-                StateHasChanged();
-            });
-        }
-        else
-        {
-            InvokeAsync(StateHasChanged);
-        }
+            }
+
+            StateHasChanged();
+        });
     }
+
+    private void RecomputeBuckets()
+    {
+        _runningCount = _jobs.Count(j => j.Status == JobStatus.Running);
+        _queuedCount  = _jobs.Count(j => j.Status == JobStatus.Queued);
+        _doneCount    = _jobs.Count(j => j.Status == JobStatus.Done);
+        _errorCount   = _jobs.Count(j => j.Status is JobStatus.Error or JobStatus.Aborted);
+
+        _activeJobs = _jobs.Where(j => j.Status is JobStatus.Running or JobStatus.Queued).ToList();
+        _finishedJobs = _jobs.Where(j => j.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted).ToList();
+    }
+
+    private void PushCounterToAppBar() => AppShell?.UpdateJobCounter(_runningCount, _queuedCount);
+
+    // ─── Download flow (unchanged from the previous Home.razor) ─────────────
 
     private DownloadCategory _pendingDownloadCategory = DownloadCategory.Auto;
 
@@ -244,129 +282,76 @@
         _pendingDownloadCategory = category;
         var inputUrls = ParseUrls(_model.RawUrls);
         if (inputUrls.Count == 0) return;
-
         try
         {
             var urls = await ResolveUrlsAsync(inputUrls);
             if (urls.Count == 0)
             {
                 Snackbar.Add("Keine gültigen URLs gefunden.", Severity.Error);
-                Logger.LogWarning("No valid URLs resolved from input");
                 return;
             }
-
             _resolvedUrlsAwaitingConfirmation = urls;
-            Logger.LogInformation("Resolved {UrlCount} URLs for download", urls.Count);
-
-            // Check for duplicates against download history
             var dupes = urls.Where(_history.Contains).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (dupes.Count > 0)
             {
                 _duplicates = dupes;
-                _deltaUrlsAwaitingConfirmation = urls
-                    .Except(dupes, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                Logger.LogInformation("Found {DuplicateCount} duplicate URLs out of {Total}", dupes.Count, urls.Count);
+                _deltaUrlsAwaitingConfirmation = urls.Except(dupes, StringComparer.OrdinalIgnoreCase).ToList();
                 return;
             }
-
             _deltaUrlsAwaitingConfirmation = [];
             EnqueueAll(urls, category);
             Snackbar.Add($"{urls.Count} Download(s) gestartet.", Severity.Success);
-            Logger.LogInformation("Enqueued {UrlCount} downloads", urls.Count);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error during StartDownloads: {ErrorMessage}", ex.Message);
-            Snackbar.Add($"Fehler beim Starten der Downloads: {ex.Message}", Severity.Error);
+            Logger.LogError(ex, "StartDownloads failed");
+            Snackbar.Add($"Fehler: {ex.Message}", Severity.Error);
         }
     }
 
     private async Task ForceDownload()
     {
-        List<string> urls = _resolvedUrlsAwaitingConfirmation.Count > 0
+        var urls = _resolvedUrlsAwaitingConfirmation.Count > 0
             ? new List<string>(_resolvedUrlsAwaitingConfirmation)
             : await ResolveUrlsAsync(ParseUrls(_model.RawUrls));
-
-        _duplicates = [];
-        _deltaUrlsAwaitingConfirmation = [];
-        _resolvedUrlsAwaitingConfirmation = [];
+        ClearDuplicateState();
         EnqueueAll(urls, _pendingDownloadCategory);
     }
 
     private void DownloadDelta()
     {
-        List<string> delta = _deltaUrlsAwaitingConfirmation.Count > 0
-            ? new List<string>(_deltaUrlsAwaitingConfirmation)
-            : [];
-
-        _duplicates = [];
-        _deltaUrlsAwaitingConfirmation = [];
-        _resolvedUrlsAwaitingConfirmation = [];
-
-        if (delta.Count == 0)
-        {
-            Snackbar.Add("Keine neuen Folgen gefunden.", Severity.Info);
-            return;
-        }
-
+        var delta = _deltaUrlsAwaitingConfirmation.Count > 0 ? new List<string>(_deltaUrlsAwaitingConfirmation) : [];
+        ClearDuplicateState();
+        if (delta.Count == 0) { Snackbar.Add("Keine neuen Folgen gefunden.", Severity.Info); return; }
         EnqueueAll(delta, _pendingDownloadCategory);
     }
 
-    private void ClearDuplicateWarning()
+    private void ClearDuplicateWarning() => ClearDuplicateState();
+
+    private void ClearDuplicateState()
     {
         _duplicates = [];
         _deltaUrlsAwaitingConfirmation = [];
         _resolvedUrlsAwaitingConfirmation = [];
-    }
-
-    private async Task SearchMediathek()
-    {
-        _mediathekError = null;
-        _mediathekResults = [];
-        _mediathekIsLoading = true;
-
-        try
-        {
-            var results = await MediathekViewWeb.SearchAsync(_mediathekQuery, _mediathekEverywhere);
-            _mediathekResults = [.. results];
-            if (_mediathekResults.Count == 0)
-                _mediathekError = "Keine Ergebnisse gefunden.";
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "MediathekViewWeb search failed: {ErrorMessage}", ex.Message);
-            _mediathekError = "Fehler bei der Mediathek-Suche. Bitte später erneut versuchen.";
-        }
-        finally
-        {
-            _mediathekIsLoading = false;
-        }
-    }
-
-    private void EnqueueMediathekResult(string url, string? title, string? category, DownloadCategory downloadCategory)
-    {
-        // If manually downloading as series and we have a category, use it as series name
-        if (downloadCategory == DownloadCategory.Series && !string.IsNullOrWhiteSpace(category))
-        {
-            // Override title to include series name from category
-            title = $"{category} - {title}";
-        }
-
-        JobManager.Enqueue(url, title, downloadCategory);
-        Snackbar.Add($"{downloadCategory}-Download gestartet.", Severity.Success);
     }
 
     private void EnqueueAll(List<string> urls, DownloadCategory category = DownloadCategory.Auto)
     {
-        foreach (var url in urls)
-            JobManager.Enqueue(url, category: category);
+        foreach (var url in urls) JobManager.Enqueue(url, category: category);
         _model.RawUrls = string.Empty;
         _duplicates = [];
     }
 
-    private void AbortJob(string id) => JobManager.Abort(id);
+    private void EnqueueMediathekResult((string url, string? title, string? category, DownloadCategory category2) args)
+    {
+        var (url, title, category, downloadCategory) = args;
+        if (downloadCategory == DownloadCategory.Series && !string.IsNullOrWhiteSpace(category))
+            title = $"{category} - {title}";
+        JobManager.Enqueue(url, title, downloadCategory);
+        Snackbar.Add($"{downloadCategory}-Download gestartet.", Severity.Success);
+    }
 
+    private void AbortJob(string id) => JobManager.Abort(id);
     private void RequeueJob(string id) => JobManager.Requeue(id);
 
     private Task OnRawUrlsChanged(string value)
@@ -384,40 +369,25 @@
     private async Task<List<string>> ResolveUrlsAsync(List<string> inputUrls)
     {
         var resolved = new List<string>();
-
         foreach (var inputUrl in inputUrls)
         {
-            try
-            {
-                var expanded = await JobManager.ResolveInputUrlsAsync(inputUrl);
-                resolved.AddRange(expanded);
-                Logger.LogInformation("Resolved URL '{InputUrl}' to {ExpandedCount} URLs", inputUrl, expanded.Count);
-            }
+            try { resolved.AddRange(await JobManager.ResolveInputUrlsAsync(inputUrl)); }
             catch (Exception ex)
             {
-                Logger.LogWarning(ex, "Failed to resolve URL '{InputUrl}', adding original URL as fallback. Error: {ErrorMessage}", inputUrl, ex.Message);
-                // If expansion fails, keep the original input URL so the user can still download directly.
+                Logger.LogWarning(ex, "Resolve failed for {Url}", inputUrl);
                 resolved.Add(inputUrl);
             }
         }
-
-        return resolved
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        return resolved.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     private int? GetQueuePosition(DownloadJob job)
     {
-        if (job.Status != JobStatus.Queued)
-            return null;
-
-        var queued = _jobs
-            .Where(j => j.Status == JobStatus.Queued)
-            .OrderBy(j => j.CreatedAt)
-            .Select((j, idx) => new { j.Id, Position = idx + 1 })
-            .FirstOrDefault(x => x.Id == job.Id);
-
-        return queued?.Position;
+        if (job.Status != JobStatus.Queued) return null;
+        return _jobs.Where(j => j.Status == JobStatus.Queued)
+                    .OrderBy(j => j.CreatedAt)
+                    .Select((j, idx) => new { j.Id, Position = idx + 1 })
+                    .FirstOrDefault(x => x.Id == job.Id)?.Position;
     }
 
     public void Dispose() => JobManager.JobsChanged -= OnJobsChanged;

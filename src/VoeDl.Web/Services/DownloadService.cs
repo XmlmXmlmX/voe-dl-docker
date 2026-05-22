@@ -697,8 +697,11 @@ public sealed class DownloadService
 
         if (IsYtDlpFriendlyUrl(url))
         {
-            log($"[*] Detected external yt-dlp host, using original URL: {url}");
-            var ytDlpName = GetYtDlpFriendlyName(url);
+            log($"[*] Detected external yt-dlp host, resolving title via yt-dlp: {url}");
+            var resolvedTitle = await GetYtDlpTitleAsync(url, log, ct);
+            var ytDlpName = resolvedTitle ?? GetYtDlpFriendlyName(url);
+            if (resolvedTitle is not null)
+                log($"[+] yt-dlp title resolved: {ytDlpName}");
             var ytDlpFolderName = MakeFolderName(ytDlpName);
             return (url, string.Empty, ytDlpName, ytDlpFolderName);
         }
@@ -1214,6 +1217,51 @@ public sealed class DownloadService
         {
             log($"[!] Direct download failed: {ex.Message}");
             return 1;
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // yt-dlp title resolver
+    // ---------------------------------------------------------------
+    private static async Task<string?> GetYtDlpTitleAsync(string url, Action<string> log, CancellationToken ct)
+    {
+        try
+        {
+            string ytDlp = FindYtDlp();
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = ytDlp,
+                ArgumentList =
+                {
+                    "--print", "%(title)s",
+                    "--no-warnings",
+                    "--no-playlist",
+                    "--socket-timeout", "15",
+                    url,
+                },
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+
+            using var process = new System.Diagnostics.Process { StartInfo = psi };
+            process.Start();
+            string output = await process.StandardOutput.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            var title = output.Trim();
+            return string.IsNullOrWhiteSpace(title) || title == "NA" ? null : title;
+        }
+        catch (FileNotFoundException)
+        {
+            log("[*] yt-dlp not found, falling back to URL-based name.");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            log($"[*] yt-dlp title lookup failed ({ex.Message}), falling back to URL-based name.");
+            return null;
         }
     }
 

@@ -187,7 +187,8 @@ public sealed class TmdbService
 
     private async Task<TmdbMetadata?> LookupMovieAsync(string title, int? year, CancellationToken ct)
     {
-        var query = Uri.EscapeDataString(title);
+        var normalized = NormalizeMovieTitle(title);
+        var query = Uri.EscapeDataString(normalized);
         var yearParam = year.HasValue ? $"&year={year.Value}" : "";
         var url = $"{ApiBase}search/movie?query={query}{yearParam}&language={_language}&include_adult=false";
 
@@ -206,6 +207,10 @@ public sealed class TmdbService
                 results = retryDoc.RootElement.GetProperty("results");
                 if (results.GetArrayLength() == 0) return null;
                 return await BuildMovieMetaAsync(results[0], ct);
+            }
+            else
+            {
+                // Try to spli
             }
             return null;
         }
@@ -362,6 +367,11 @@ public sealed class TmdbService
         }
 
         return best ?? results[0];
+    }
+
+    private static string NormalizeMovieTitle(string value)
+    {
+        return value.Split('-')[0];
     }
 
     private static string NormalizeTitle(string value)

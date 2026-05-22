@@ -62,7 +62,7 @@ public sealed class CookieStoreService
             return null;
 
         var tempFile = Path.Combine(Path.GetTempPath(), $"voedl-yt-dlp-cookies-{Guid.NewGuid():N}.txt");
-        await File.WriteAllTextAsync(tempFile, cookie.Content, Encoding.UTF8);
+        await File.WriteAllTextAsync(tempFile, cookie.Content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         return tempFile;
     }
 

@@ -2,54 +2,70 @@
 @using MudBlazor
 @using VoeDl.Web.Models
 
+@* Compact history list with category icon, title, meta, date and replay action. *@
+
 <MudCard Elevation="2" Class="mb-4">
     <MudCardHeader>
         <CardHeaderContent>
-            <MudText Typo="Typo.h6">Heruntergeladene URLs</MudText>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.History" Color="Color.Primary" />
+                <MudText Typo="Typo.h6">Heruntergeladen</MudText>
+            </MudStack>
         </CardHeaderContent>
         <CardHeaderActions>
             <MudChip T="string" Color="Color.Default" Size="Size.Small">@History.Count</MudChip>
         </CardHeaderActions>
     </MudCardHeader>
+
     <MudCardContent Class="pa-0">
         @if (History.Count == 0)
         {
-            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-4">
-                Noch keine URLs heruntergeladen.
-            </MudText>
+            <MudPaper Class="d-flex flex-column align-center justify-center pa-8" Elevation="0">
+                <MudIcon Icon="@Icons.Material.Filled.Inbox" Size="Size.Large" Color="Color.Default" />
+                <MudText Typo="Typo.subtitle1" Class="mt-2">Noch keine URLs heruntergeladen</MudText>
+            </MudPaper>
         }
         else if (HistoryEntries.Count > 0)
         {
-            <ul class="list-group list-group-flush">
+            <MudList T="DownloadHistoryEntry" Dense="true" Style="max-height:420px;overflow-y:auto;">
                 @foreach (var entry in HistoryEntries)
                 {
-                    <li class="list-group-item py-1 px-3">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <a href="@entry.Url" target="_blank" rel="noopener"
-                               class="text-decoration-none font-monospace small text-muted text-truncate me-2"
-                               style="max-width:70%;">
-                                @(entry.Title ?? entry.Url)
-                            </a>
-                            <span class="text-muted small flex-shrink-0">
+                    <MudListItem T="DownloadHistoryEntry" Value="entry">
+                        <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center" Class="w-100">
+                            <MudIcon Icon="@(entry.Success ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                                     Color="@(entry.Success ? Color.Success : Color.Error)" Size="Size.Small" />
+                            <div class="flex-grow-1" style="min-width:0;">
+                                <MudLink Href="@entry.Url" Target="_blank" rel="noopener"
+                                         Typo="Typo.body2" Color="Color.Default"
+                                         Style="font-weight:500;word-break:break-word;">
+                                    @(entry.Title ?? entry.Url)
+                                </MudLink>
+                                @if (!string.IsNullOrEmpty(entry.Title))
+                                {
+                                    <MudText Typo="Typo.caption"
+                                             Style="font-family:monospace;word-break:break-all;display:block;">
+                                        @entry.Url
+                                    </MudText>
+                                }
+                            </div>
+                            <MudText Typo="Typo.caption"
+                                     Style="font-variant-numeric:tabular-nums;flex-shrink:0;">
                                 @entry.FinishedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
-                            </span>
-                        </div>
-                        @if (entry.Title is not null)
-                        {
-                            <small class="text-muted font-monospace" style="font-size:.7rem;">@entry.Url</small>
-                        }
-                    </li>
+                            </MudText>
+                        </MudStack>
+                    </MudListItem>
                 }
-            </ul>
+            </MudList>
         }
         else
         {
-            <MudList T="string" Dense="true" Style="max-height:220px; overflow-y:auto;">
+            <MudList T="string" Dense="true" Style="max-height:420px;overflow-y:auto;">
                 @foreach (var url in ((IEnumerable<string>)History).Reverse())
                 {
-                    <MudListItem T="string">
+                    <MudListItem T="string" Value="url">
                         <MudLink Href="@url" Target="_blank" rel="noopener"
-                                 Typo="Typo.caption" Style="font-family:monospace; word-break:break-all;">
+                                 Typo="Typo.caption"
+                                 Style="font-family:monospace;word-break:break-all;">
                             @url
                         </MudLink>
                     </MudListItem>
@@ -60,9 +76,6 @@
 </MudCard>
 
 @code {
-    [Parameter]
-    public IReadOnlyList<string> History { get; set; } = [];
-
-    [Parameter]
-    public IReadOnlyList<DownloadHistoryEntry> HistoryEntries { get; set; } = [];
+    [Parameter] public IReadOnlyList<string> History { get; set; } = [];
+    [Parameter] public IReadOnlyList<DownloadHistoryEntry> HistoryEntries { get; set; } = [];
 }

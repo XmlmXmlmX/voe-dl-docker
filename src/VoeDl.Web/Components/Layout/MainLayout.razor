@@ -1,20 +1,63 @@
 @inherits LayoutComponentBase
+@using MudBlazor
+@using VoeDl.Web.Components.Pages.HomeComponents
+@inject IDialogService DialogService
 
-<MudThemeProvider />
+<MudThemeProvider Theme="_theme" IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="1" Color="Color.Primary">
-        <MudText Typo="Typo.h6" Class="ml-2 d-flex align-center gap-1">
-            <MudIcon Icon="@Icons.Material.Filled.Movie" Size="Size.Medium" />
-            <span>voe-dl</span>
-        </MudText>
-        <MudText Typo="Typo.caption" Class="ml-2 mt-1" Style="opacity:0.7;">Web Interface</MudText>
+    <MudAppBar Elevation="4" Color="Color.Primary" Dense="false">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudPaper Class="d-flex align-center justify-center rounded"
+                      Style="width:36px;height:36px;background:rgba(255,255,255,0.18);"
+                      Elevation="0">
+                <MudIcon Icon="@Icons.Material.Filled.Movie" Size="Size.Medium" />
+            </MudPaper>
+            <div class="d-flex flex-column" style="line-height:1.1;">
+                <MudText Typo="Typo.h6" Style="font-weight:500;">voe-dl</MudText>
+                <MudText Typo="Typo.caption" Style="opacity:0.75;">Web Interface</MudText>
+            </div>
+        </MudStack>
+
+        <MudSpacer />
+
+        @* Live counter — gets its values from the cascaded layout state *@
+        <CascadingValue Value="_jobCounter" Name="AppJobCounter">
+            @if (_jobCounter is { Total: > 0 })
+            {
+                <MudPaper Class="d-flex align-center px-3 py-1 mr-2"
+                          Style="background:rgba(255,255,255,0.14);border-radius:999px;backdrop-filter:blur(4px);"
+                          Elevation="0">
+                    <MudIcon Icon="@Icons.Material.Filled.Circle"
+                             Size="Size.Small"
+                             Style="color:#00e676;font-size:10px;" Class="mr-2" />
+                    <MudText Typo="Typo.body2" Style="color:#fff;">
+                        <strong>@_jobCounter.Running</strong> aktiv · <strong>@_jobCounter.Queued</strong> wartend
+                    </MudText>
+                </MudPaper>
+            }
+        </CascadingValue>
+
+        <MudTooltip Text="@(_isDarkMode ? "Helles Theme" : "Dunkles Theme")">
+            <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                           Color="Color.Inherit"
+                           OnClick="ToggleTheme" />
+        </MudTooltip>
+
+        <MudTooltip Text="Einstellungen">
+            <MudIconButton Icon="@Icons.Material.Filled.Settings"
+                           Color="Color.Inherit"
+                           OnClick="OpenSettings" />
+        </MudTooltip>
     </MudAppBar>
+
     <MudMainContent>
-        @Body
+        <CascadingValue Value="this" Name="AppShell">
+            @Body
+        </CascadingValue>
     </MudMainContent>
 </MudLayout>
 
@@ -25,3 +68,32 @@
         <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" />
     </span>
 </div>
+
+@code {
+    public sealed record JobCounter(int Running, int Queued, int Total);
+
+    private bool _isDarkMode;
+    private JobCounter? _jobCounter;
+    private readonly MudTheme _theme = AppTheme.Build();
+
+    /// <summary>Called from Home.razor whenever the job list changes
+    /// so the AppBar counter stays in sync.</summary>
+    public void UpdateJobCounter(int running, int queued)
+    {
+        _jobCounter = new JobCounter(running, queued, running + queued);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleTheme() => _isDarkMode = !_isDarkMode;
+
+    private Task OpenSettings() =>
+        DialogService.ShowAsync<SettingsDialog>(
+            "Einstellungen",
+            new DialogOptions
+            {
+                MaxWidth = MaxWidth.Small,
+                FullWidth = true,
+                CloseButton = true,
+                BackdropClick = true,
+            });
+}

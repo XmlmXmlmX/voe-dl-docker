@@ -1,43 +1,38 @@
-/* ---- Job log box ---- */
+/* === Log box for running / completed download jobs === */
 .log-box {
-    background: #1e1e1e;
-    color: #d4d4d4;
-    font-family: monospace;
-    font-size: .8rem;
+    background: #0f0f12;
+    color: #cfcfd4;
+    font-family: 'JetBrains Mono', 'Consolas', 'Menlo', monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    padding: 14px 16px;
+    border-radius: 6px;
+    max-height: 280px;
+    overflow: auto;
     white-space: pre-wrap;
     word-break: break-all;
-    max-height: 300px;
-    overflow-y: auto;
-    padding: .75rem;
-    border-radius: .375rem;
+    border: 1px solid #000;
 }
 
-/* ---- Blazor error UI ---- */
-#blazor-error-ui {
-    background: lightyellow;
-    bottom: 0;
-    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
-    display: none;
-    left: 0;
-    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
-    position: fixed;
-    width: 100%;
-    z-index: 1000;
+/* === Subtle hover lift on job cards === */
+.mud-paper.mb-3.pa-4:hover {
+    box-shadow: var(--mud-elevation-4);
 }
 
-#blazor-error-ui .dismiss {
-    cursor: pointer;
-    position: absolute;
-    right: 0.75rem;
-    top: 0.5rem;
+/* === Suppress the default InputFile chrome inside the settings dialog ===
+   (we render our own dropzone around it.) */
+.mud-dialog input[type="file"] {
+    font-size: 13px;
+    color: var(--mud-palette-text-secondary);
 }
 
-.blazor-error-boundary {
-    background: #b32121;
-    padding: 1rem 1rem 1rem 3.7rem;
-    color: white;
+/* === Empty-state paper: subtle dashed look, transparent so the tab panel bg shows through === */
+.empty-state-paper {
+    background: transparent !important;
 }
 
-.blazor-error-boundary::after {
-    content: "Ein Fehler ist aufgetreten.";
+/* === Tab badge tweaks (numeric badge on MudTabPanel) === */
+.mud-tabs .mud-badge-wrapper .mud-badge {
+    transform: scale(0.9);
+    font-weight: 700;
 }

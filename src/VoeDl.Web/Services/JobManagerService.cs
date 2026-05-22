@@ -356,8 +356,7 @@ public sealed class JobManagerService : IJobManagerService
                 job.ProgressPercent = exitCode == 0 ? 100 : job.ProgressPercent;
             }
 
-            if (exitCode == 0)
-                await AppendToHistoryAsync(job);
+            await AppendToHistoryAsync(job, exitCode == 0);
         }
         catch (OperationCanceledException)
         {
@@ -388,7 +387,7 @@ public sealed class JobManagerService : IJobManagerService
         }
     }
 
-    private async Task AppendToHistoryAsync(DownloadJob job)
+    private async Task AppendToHistoryAsync(DownloadJob job, bool success)
     {
         if (_dbFactory is not null)
         {
@@ -400,6 +399,7 @@ public sealed class JobManagerService : IJobManagerService
                 Title = job.Title,
                 CreatedAt = job.CreatedAt,
                 FinishedAt = job.FinishedAt ?? DateTimeOffset.UtcNow,
+                Success = success,
             });
             await db.SaveChangesAsync();
             return;

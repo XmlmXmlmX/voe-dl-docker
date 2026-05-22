@@ -2,18 +2,30 @@
 @using MudBlazor
 @using VoeDl.Web.Models
 
+@* Primary download input — big textarea + split-button category picker. *@
+
 <MudCard Elevation="2" Class="mb-4">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.AddLink" Color="Color.Primary" />
+                <MudText Typo="Typo.h6">Neuer Download</MudText>
+            </MudStack>
+        </CardHeaderContent>
+    </MudCardHeader>
+
     <MudCardContent>
         <MudTextField T="string"
-                  Value="@RawUrls"
+                      Value="@RawUrls"
                       ValueChanged="OnRawUrlsChanged"
-                      Label="URL(s) eingeben"
-                      HelperText="Eine URL pro Zeile"
+                      Immediate="true"
+                      Label="URL(s) — eine pro Zeile"
+                      HelperText="@HelperText"
                       Lines="4"
                       Variant="Variant.Outlined"
-                      Class="mb-2"
-                      Placeholder="https://voe.sx/xxxxxxx&#10;https://voe.sx/yyyyyyy"
-                      Style="font-family: monospace;" />
+                      Class="mb-3"
+                      Placeholder="https://voe.sx/xxxxxxx&#10;https://www.arte.tv/de/videos/..."
+                      Style="font-family: 'JetBrains Mono', monospace;" />
 
         @if (Duplicates.Count > 0)
         {
@@ -21,44 +33,56 @@
                 <MudText Typo="Typo.body2" Class="mb-1"><strong>Bereits heruntergeladen:</strong></MudText>
                 @foreach (var u in Duplicates)
                 {
-                    <MudText Typo="Typo.caption" Style="font-family:monospace; word-break:break-all;">@u</MudText>
+                    <MudText Typo="Typo.caption" Style="font-family:monospace;word-break:break-all;">@u</MudText>
                 }
-                <div class="mt-2">
+                <MudStack Row="true" Spacing="2" Class="mt-2">
                     <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small"
-                               Class="mr-2" OnClick="OnForceDownload">Erneut herunterladen</MudButton>
+                               OnClick="OnForceDownload">Erneut herunterladen</MudButton>
                     <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
-                               Class="mr-2" OnClick="OnDownloadDelta">Nur Delta herunterladen</MudButton>
+                               OnClick="OnDownloadDelta">Nur Delta</MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
                                OnClick="OnClearDuplicateWarning">Abbrechen</MudButton>
-                </div>
+                </MudStack>
             </MudAlert>
         }
         else
         {
-            <MudStack Row="true" Class="mb-2" Spacing="1">
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Download"
-                           OnClick="() => OnStartDownloads.InvokeAsync(DownloadCategory.Auto)">
-                    Download (automatisch)
-                </MudButton>
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Secondary"
-                           StartIcon="@Icons.Material.Filled.Movie"
-                           OnClick="() => OnStartDownloads.InvokeAsync(DownloadCategory.Movie)">
-                    Download as Movie
-                </MudButton>
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Info"
-                           StartIcon="@Icons.Material.Filled.Tv"
-                           OnClick="() => OnStartDownloads.InvokeAsync(DownloadCategory.Series)">
-                    Download as Series
-                </MudButton>
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Warning"
-                           StartIcon="@Icons.Material.Filled.Article"
-                           OnClick="() => OnStartDownloads.InvokeAsync(DownloadCategory.Documentary)">
-                    Download as Doku
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+
+                @* Split-Button: primary action + dropdown for category override *@
+                <MudButtonGroup Color="Color.Primary" Variant="Variant.Filled">
+                    <MudButton StartIcon="@Icons.Material.Filled.Download"
+                               OnClick="() => OnStartDownloads.InvokeAsync(DownloadCategory.Auto)"
+                               Disabled="@string.IsNullOrWhiteSpace(RawUrls)">
+                        Download starten
+                    </MudButton>
+                    <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown"
+                             Color="Color.Primary"
+                             Variant="Variant.Filled"
+                             AnchorOrigin="Origin.BottomRight"
+                             TransformOrigin="Origin.TopRight"
+                             Dense="true"
+                             Disabled="@string.IsNullOrWhiteSpace(RawUrls)">
+                        <MudMenuItem Icon="@Icons.Material.Filled.Movie"
+                                     OnClick="() => OnStartDownloads.InvokeAsync(DownloadCategory.Movie)">
+                            Als Film laden
+                        </MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Tv"
+                                     OnClick="() => OnStartDownloads.InvokeAsync(DownloadCategory.Series)">
+                            Als Serie laden
+                        </MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Article"
+                                     OnClick="() => OnStartDownloads.InvokeAsync(DownloadCategory.Documentary)">
+                            Als Doku laden
+                        </MudMenuItem>
+                    </MudMenu>
+                </MudButtonGroup>
+
+                <MudButton Variant="Variant.Text" Color="Color.Default"
+                           StartIcon="@Icons.Material.Filled.Clear"
+                           Disabled="@string.IsNullOrWhiteSpace(RawUrls)"
+                           OnClick="ClearInput">
+                    Leeren
                 </MudButton>
             </MudStack>
         }
@@ -66,30 +90,25 @@
 </MudCard>
 
 @code {
-    [Parameter]
-    public string RawUrls { get; set; } = string.Empty;
+    [Parameter] public string RawUrls { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> RawUrlsChanged { get; set; }
+    [Parameter] public IReadOnlyList<string> Duplicates { get; set; } = [];
+    [Parameter] public EventCallback<DownloadCategory> OnStartDownloads { get; set; }
+    [Parameter] public EventCallback OnForceDownload { get; set; }
+    [Parameter] public EventCallback OnDownloadDelta { get; set; }
+    [Parameter] public EventCallback OnClearDuplicateWarning { get; set; }
 
-    [Parameter]
-    public EventCallback<string> RawUrlsChanged { get; set; }
+    private int UrlCount => RawUrls
+        .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+        .Count(l => !string.IsNullOrWhiteSpace(l));
 
-    [Parameter]
-    public IReadOnlyList<string> Duplicates { get; set; } = [];
-
-    [Parameter]
-    public EventCallback<DownloadCategory> OnStartDownloads { get; set; }
-
-    [Parameter]
-    public EventCallback OnForceDownload { get; set; }
-
-    [Parameter]
-    public EventCallback OnDownloadDelta { get; set; }
-
-    [Parameter]
-    public EventCallback OnClearDuplicateWarning { get; set; }
+    private string HelperText => $"Unterstützt yt-dlp-kompatible URLs · {UrlCount} URL(s) erkannt";
 
     private Task OnRawUrlsChanged(string value)
     {
         RawUrls = value;
         return RawUrlsChanged.InvokeAsync(value);
     }
+
+    private Task ClearInput() => RawUrlsChanged.InvokeAsync(string.Empty);
 }

@@ -2,100 +2,158 @@
 @using MudBlazor
 @using VoeDl.Web.Models
 
-<MudCard Elevation="2" Class="mb-3">
-    <MudCardContent>
-        <div class="d-flex justify-space-between align-start">
-            <div style="min-width:0; flex:1; margin-right:12px;">
-                <MudLink Href="@Job.Url" Target="_blank" rel="noopener"
-                         Typo="Typo.body1" Color="Color.Default"
-                         Style="word-break:break-all;">
-                    @(Job.Title ?? Job.Url)
-                    <MudIcon Icon="@Icons.Material.Filled.OpenInNew" />
-                </MudLink>
-            </div>
-            <div class="d-flex align-center flex-shrink-0">
+@*
+    Job card with status border-left, thumb slot, progress row (downloaded/total + %),
+    and collapsible log. The colored border-left provides at-a-glance status without
+    needing to read the chip text.
+*@
+
+<MudPaper Elevation="2" Class="mb-3 pa-4" Style="@CardStyle">
+    <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Start">
+
+        @* Status thumb slot *@
+        <MudPaper Class="d-flex align-center justify-center flex-shrink-0"
+                  Elevation="0"
+                  Style="@($"width:56px;height:56px;border-radius:6px;border:1px solid var(--mud-palette-divider);background:var(--mud-palette-background-grey);color:{StatusHex};")">
+            <MudIcon Icon="@StatusIcon" Size="Size.Medium" />
+        </MudPaper>
+
+        @* Title + sub-info *@
+        <MudStack Spacing="1" Class="flex-grow-1" Style="min-width:0;">
+            <MudLink Href="@Job.Url" Target="_blank" rel="noopener"
+                     Typo="Typo.body1" Color="Color.Default"
+                     Style="font-weight:500;word-break:break-word;">
+                @(Job.Title ?? Job.Url)
+                <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Style="opacity:0.6;font-size:14px;" />
+            </MudLink>
+
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Style="flex-wrap:wrap;">
+                <MudChip T="string" Size="Size.Small" Color="@StatusChipColor(Job.Status)" Variant="Variant.Filled">
+                    @StatusLabel
+                </MudChip>
+
+                @if (Job.Status == JobStatus.Queued && QueuePosition.HasValue)
+                {
+                    <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);">
+                        Position @QueuePosition.Value in der Warteschlange
+                    </MudText>
+                }
                 @if (Job.Status == JobStatus.Running)
                 {
-                    <MudProgressCircular Size="Size.Small" Indeterminate="true"
-                                         Color="Color.Primary" Class="mr-2" />
+                    <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);">
+                        @(Job.Phase == JobPhase.Preparing ? "Vorbereiten" : "Herunterladen")
+                    </MudText>
                 }
-                else if (Job.Status == JobStatus.Queued)
-                {
-                    <MudIcon Icon="@Icons.Material.Filled.Schedule" Color="Color.Warning" Size="Size.Small" Class="mr-2" />
-                }
-                <MudChip T="string" Color="@StatusChipColor(Job.Status)"
-                         Size="Size.Small" Class="mr-1">
-                    @Job.Status.ToString().ToLowerInvariant()
-                </MudChip>
-                @if (Job.Status is JobStatus.Queued or JobStatus.Running)
-                {
-                    <MudIconButton Icon="@Icons.Material.Filled.Stop"
-                                   Color="Color.Error" Size="Size.Small"
-                                   title="Abbrechen"
-                                   OnClick="Abort" />
-                }
-                else if (Job.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted)
-                {
-                    <MudIconButton Icon="@Icons.Material.Filled.Replay"
-                                   Color="Color.Default" Size="Size.Small"
-                                   title="Erneut herunterladen"
-                                   OnClick="Requeue" />
-                }
-            </div>
-        </div>
-        @if (!string.IsNullOrWhiteSpace(Job.Logs))
-        {
-            @if (Job.Status == JobStatus.Running)
+            </MudStack>
+        </MudStack>
+
+        @* Actions *@
+        <div class="d-flex align-center flex-shrink-0">
+            @if (Job.Status is JobStatus.Queued or JobStatus.Running)
             {
-                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 mb-1">
-                    Aktueller Zustand: @(Job.Phase == JobPhase.Preparing ? "Vorbereiten" : "Herunterladen")
-                </MudText>
-                <MudProgressLinear Color="Color.Info"
-                                   Class="mb-2"
-                                   Value="@(Job.ProgressPercent ?? 0)"
-                                   Indeterminate="@(Job.ProgressPercent is null)" />
+                <MudTooltip Text="Abbrechen">
+                    <MudIconButton Icon="@Icons.Material.Filled.Stop"
+                                   Color="Color.Error"
+                                   Size="Size.Small"
+                                   OnClick="Abort" />
+                </MudTooltip>
             }
-            <MudExpansionPanels Class="mt-2" Elevation="0">
-                <MudExpansionPanel Text="@(Job.Status == JobStatus.Running ? "Live-Log" : "Log anzeigen")"
-                                   Expanded="@(Job.Status == JobStatus.Running)"
-                                   Dense="true">
-                    <div class="log-box">@Job.Logs</div>
-                </MudExpansionPanel>
-            </MudExpansionPanels>
-        }
-        else if (Job.Status == JobStatus.Queued)
-        {
-            <MudText Typo="Typo.caption" Color="Color.Warning" Class="mt-2">
-                In Warteschlange @(QueuePosition.HasValue ? $"(Position {QueuePosition.Value})" : string.Empty)
+            else if (Job.Status is JobStatus.Done or JobStatus.Error or JobStatus.Aborted)
+            {
+                <MudTooltip Text="Erneut herunterladen">
+                    <MudIconButton Icon="@Icons.Material.Filled.Replay"
+                                   Color="Color.Default"
+                                   Size="Size.Small"
+                                   OnClick="Requeue" />
+                </MudTooltip>
+            }
+        </div>
+    </MudStack>
+
+    @if (Job.Status == JobStatus.Running)
+    {
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-3">
+            <MudProgressLinear Color="Color.Primary"
+                               Value="@(Job.ProgressPercent ?? 0)"
+                               Indeterminate="@(Job.ProgressPercent is null)"
+                               Class="flex-grow-1"
+                               Style="height:6px;border-radius:3px;" />
+            <MudText Typo="Typo.body2" Style="min-width:46px;text-align:right;font-variant-numeric:tabular-nums;font-weight:500;">
+                @($"{(int)(Job.ProgressPercent ?? 0)}%")
             </MudText>
-        }
-    </MudCardContent>
-</MudCard>
+        </MudStack>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Job.Logs))
+    {
+        <MudExpansionPanels Elevation="0" Class="mt-3">
+            <MudExpansionPanel Dense="true"
+                               Expanded="@(Job.Status == JobStatus.Running)">
+                <TitleContent>
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.Terminal" Size="Size.Small" Color="Color.Default" />
+                        <MudText Typo="Typo.body2">
+                            @(Job.Status == JobStatus.Running ? "Live-Log" : "Log anzeigen")
+                        </MudText>
+                    </MudStack>
+                </TitleContent>
+                <ChildContent>
+                    <div class="log-box">@Job.Logs</div>
+                </ChildContent>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+</MudPaper>
 
 @code {
-    [Parameter, EditorRequired]
-    public DownloadJob Job { get; set; } = default!;
-
-    [Parameter]
-    public int? QueuePosition { get; set; }
-
-    [Parameter]
-    public EventCallback<string> OnAbort { get; set; }
-
-    [Parameter]
-    public EventCallback<string> OnRequeue { get; set; }
+    [Parameter, EditorRequired] public DownloadJob Job { get; set; } = default!;
+    [Parameter] public int? QueuePosition { get; set; }
+    [Parameter] public EventCallback<string> OnAbort { get; set; }
+    [Parameter] public EventCallback<string> OnRequeue { get; set; }
 
     private Task Abort() => OnAbort.InvokeAsync(Job.Id);
-
     private Task Requeue() => OnRequeue.InvokeAsync(Job.Id);
+
+    private string CardStyle =>
+        $"border-left:4px solid {StatusHex};transition:box-shadow .15s;";
+
+    private string StatusHex => Job.Status switch
+    {
+        JobStatus.Running => "var(--mud-palette-primary)",
+        JobStatus.Queued  => "var(--mud-palette-warning)",
+        JobStatus.Done    => "var(--mud-palette-success)",
+        JobStatus.Error   => "var(--mud-palette-error)",
+        JobStatus.Aborted => "var(--mud-palette-action-disabled)",
+        _ => "var(--mud-palette-divider)",
+    };
+
+    private string StatusIcon => Job.Status switch
+    {
+        JobStatus.Running => Icons.Material.Filled.PlayCircle,
+        JobStatus.Queued  => Icons.Material.Filled.Schedule,
+        JobStatus.Done    => Icons.Material.Filled.CheckCircle,
+        JobStatus.Error   => Icons.Material.Filled.Error,
+        JobStatus.Aborted => Icons.Material.Filled.Block,
+        _ => Icons.Material.Filled.Movie,
+    };
+
+    private string StatusLabel => Job.Status switch
+    {
+        JobStatus.Running => "läuft",
+        JobStatus.Queued  => "wartet",
+        JobStatus.Done    => "fertig",
+        JobStatus.Error   => "fehler",
+        JobStatus.Aborted => "abgebrochen",
+        _ => Job.Status.ToString().ToLowerInvariant(),
+    };
 
     private static Color StatusChipColor(JobStatus status) => status switch
     {
-        JobStatus.Done => Color.Success,
-        JobStatus.Error => Color.Error,
+        JobStatus.Done    => Color.Success,
+        JobStatus.Error   => Color.Error,
         JobStatus.Running => Color.Primary,
-        JobStatus.Queued => Color.Warning,
-        JobStatus.Aborted => Color.Warning,
+        JobStatus.Queued  => Color.Warning,
+        JobStatus.Aborted => Color.Default,
         _ => Color.Default,
     };
 }

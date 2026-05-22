@@ -1,0 +1,161 @@
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@using VoeDl.Web.Models
+@using VoeDl.Web.Services
+@inject MediathekViewWebService MediathekViewWeb
+@inject ILogger<MediathekSearchCard> Logger
+
+@* MediathekViewWeb search — extracted into its own card, lives on the
+   "Mediathek-Suche" tab. *@
+
+<MudCard Elevation="2" Class="mb-4">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.TravelExplore" Color="Color.Primary" />
+                <MudText Typo="Typo.h6">MediathekViewWeb-Suche</MudText>
+            </MudStack>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudGrid Spacing="2" Justify="Justify.FlexStart">
+            <MudItem xs="12" md="9">
+                <MudTextField T="string"
+                              @bind-Value="_query"
+                              Label="Suchbegriff"
+                              Placeholder="z. B. Tatort, Clint Eastwood, Quanten"
+                              Variant="Variant.Outlined"
+                              FullWidth="true"
+                              Immediate="true"
+                              OnKeyUp="OnKeyUp" />
+            </MudItem>
+            <MudItem xs="12" md="3" Class="d-flex align-center">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Search"
+                           FullWidth="true"
+                           Disabled="@string.IsNullOrWhiteSpace(_query)"
+                           OnClick="Search">
+                    Suche starten
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudCheckBox T="bool" @bind-Value="_everywhere"
+                     Label="Überall suchen (Titel, Kategorie, Beschreibung)"
+                     Class="mt-2" />
+
+        @if (_isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="my-3" Color="Color.Primary" />
+        }
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3" Variant="Variant.Outlined" Dense="true">
+                @_error
+            </MudAlert>
+        }
+    </MudCardContent>
+</MudCard>
+
+@if (_results.Count > 0)
+{
+    <MudCard Elevation="2" Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.ListAlt" Color="Color.Primary" />
+                    <MudText Typo="Typo.h6">Ergebnisse</MudText>
+                </MudStack>
+            </CardHeaderContent>
+            <CardHeaderActions>
+                <MudChip T="string" Color="Color.Default" Size="Size.Small">@_results.Count Treffer</MudChip>
+            </CardHeaderActions>
+        </MudCardHeader>
+        <MudTable Items="_results" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm">
+            <HeaderContent>
+                <MudTh>Titel</MudTh>
+                <MudTh>Kategorie</MudTh>
+                <MudTh>Sender</MudTh>
+                <MudTh>Veröffentlicht</MudTh>
+                <MudTh Style="text-align:right;">Aktion</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Titel" Style="font-weight:500;">@context.Title</MudTd>
+                <MudTd DataLabel="Kategorie">
+                    <MudText Typo="Typo.caption" Style="color:var(--mud-palette-text-secondary);">@context.Category</MudText>
+                </MudTd>
+                <MudTd DataLabel="Sender">
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">@context.Creator</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Veröffentlicht" Style="font-variant-numeric:tabular-nums;">
+                    @context.PublishedAt?.ToLocalTime().ToString("yyyy-MM-dd")
+                </MudTd>
+                <MudTd Style="text-align:right;">
+                    <MudButtonGroup Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small">
+                        <MudButton StartIcon="@Icons.Material.Filled.Download"
+                                   OnClick="() => Enqueue(context, DownloadCategory.Auto)">
+                            Download
+                        </MudButton>
+                        <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown">
+                            <MudMenuItem Icon="@Icons.Material.Filled.Movie"
+                                         OnClick="() => Enqueue(context, DownloadCategory.Movie)">
+                                Als Film
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Tv"
+                                         OnClick="() => Enqueue(context, DownloadCategory.Series)">
+                                Als Serie
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Article"
+                                         OnClick="() => Enqueue(context, DownloadCategory.Documentary)">
+                                Als Doku
+                            </MudMenuItem>
+                        </MudMenu>
+                    </MudButtonGroup>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudCard>
+}
+
+@code {
+    [Parameter] public EventCallback<(string url, string? title, string? category, DownloadCategory downloadCategory)> OnEnqueue { get; set; }
+
+    private string _query = string.Empty;
+    private bool _everywhere = false;
+    private bool _isLoading;
+    private string? _error;
+    private List<MediathekViewWebResult> _results = [];
+
+    private async Task Search()
+    {
+        _error = null;
+        _results = [];
+        _isLoading = true;
+        try
+        {
+            var results = await MediathekViewWeb.SearchAsync(_query, _everywhere);
+            _results = [.. results];
+            if (_results.Count == 0)
+                _error = "Keine Ergebnisse gefunden.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Mediathek search failed");
+            _error = "Fehler bei der Mediathek-Suche. Bitte später erneut versuchen.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OnKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_query))
+            await Search();
+    }
+
+    private Task Enqueue(MediathekViewWebResult r, DownloadCategory category)
+        => OnEnqueue.InvokeAsync((r.MediaUrl, r.Title, r.Category, category));
+}
