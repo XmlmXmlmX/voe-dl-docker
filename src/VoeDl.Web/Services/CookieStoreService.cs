@@ -35,7 +35,7 @@ public sealed class CookieStoreService
             throw new InvalidOperationException("Database is not configured for yt-dlp cookie storage.");
 
         await using var db = await _dbFactory.CreateDbContextAsync();
-        db.YtDlpCookies.RemoveRange(db.YtDlpCookies);
+        await db.YtDlpCookies.ExecuteDeleteAsync();
         db.YtDlpCookies.Add(new YtDlpCookie
         {
             Content = content,
